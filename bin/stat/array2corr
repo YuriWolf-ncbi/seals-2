@@ -1,0 +1,258 @@
+#!/usr/bin/perl5.16
+
+############################################################
+#	Template:	1.1, August 17, 2015
+#	Parent Path:	/home/wolf/bin on frosty
+############################################################
+
+############################################################
+#	System etc
+############################################################
+use lib "/home/wolf/perl5/lib/perl5";
+use YIW::basic;
+use YIW::stat;
+
+our $Pver = "1.0";
+our $Pdat = "September 21 2016";
+
+our ($Pnam) = ($0 =~ m/([^\/]+)$/);
+our ($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
+
+our $Ppid = $$;	# Process ID
+our $Base = "tmp.$Pnam.$Ppid";
+our $CMD = "";
+############################################################
+#	Definitions
+############################################################
+my $fda1 = 1;
+my $fda2 = 2;
+my $ldxx = "";
+my $icom = 1;
+my $mdmp = 0;
+my $nper = 0;
+my $nboo = 0;
+my $ldelim = "\\t";
+my $dnam = "";
+my $quan = 0.05;
+
+############################################################
+#	Global variables
+############################################################
+my @data;
+my @datr;
+my @lddx = ();
+
+############################################################
+#	Instructions etc
+############################################################
+$Instructions = <<EOINPUT;
+
+$Path/$Pnam $Pver, $Pdat
+
+Use: $Pnam name [options]
+
+Returns statistics on array of data:
+
+pair ndat r_P std_r_P r_S std_r_S [pval_r_S] [q05_r_S q95_r_S]
+
+Options:
+
+	-d1=n		use n-th field as the data (default $fda1)
+
+	-d2=n		use n-th field as the data (default $fda2)
+
+	-dd=x,y,z	build correlation matrix for all pairs
+
+	-nocomm		do NOT ignore lines starting with "#"
+
+	-s="delim"	delimiters to split line (default "$ldelim")
+
+	-n=name		print dataset name (default none)
+
+	-dump=n		dump arrays (1 - data; 2 - ranks)
+
+	-pval=n		compute p-value for ranks using n permutations
+
+	-boot=n		compute 5% - 95% confidence interval for ranks
+			using n bootstrap replications
+
+	-q=x		quantile x for bootstrap (default $quan)
+EOINPUT
+
+############################################################
+#	code start
+############################################################
+
+#---	get and process arguments --------------------------
+YIW::basic::my_args(\@ARGV,1);					# pass 0 to block STDIN
+!@myGlobList and print $Instructions and exit 0;
+
+# examples for using options:
+$icom = 0 if(exists $myOptList{"nocomm"});
+$dnam = $myOptList{"n"} if($myOptList{"n"} ne "");
+$ldelim = $myOptList{"s"} if($myOptList{"s"} ne "");
+$mdmp = int $myOptList{"dump"} if(int $myOptList{"dump"}>0);
+$fda1 = int $myOptList{"d1"} if(int $myOptList{"d1"}>0);
+$fda2 = int $myOptList{"d2"} if(int $myOptList{"d2"}>0);
+$ldxx = $myOptList{"dd"} if($myOptList{"dd"} ne "");
+$nper = int $myOptList{"pval"} if(int $myOptList{"pval"}>0);
+$nboo = int $myOptList{"boot"} if(int $myOptList{"boot"}>0);
+$quan = $myOptList{"q"}+0 if($myOptList{"q"}>0 and $myOptList{"q"}<1);
+
+# my $name = shift @myGlobList;
+
+#---	rest of the code -----------------------------------
+# $CMD = ""; print STDERR "$Pnam:\t[ $CMD ]\n"; system $CMD;
+#
+# print STDERR "$Pnam:\tReading $dlst/$core.$clst\n";
+# open HAND,"<$dlst/$core.$clst" or die "$Pnam:\tCan't read \"$dlst/$core.$clst\"";
+# while(<HAND>){
+#  chomp;
+# }
+# close HAND;
+# printf STDERR "$Pnam:\t\t%s\tgenomes\n",int_commify(scalar @glist);
+
+if($ldxx ne ""){ @lddx = split/,/,$ldxx;}
+else{ $lddx[0] = $fda1; $lddx[1] = $fda2;}
+
+@lddx > 1 or die "Problems with field array [".(join ",",@lddx),"]";
+
+for(my $i=0;$i<@lddx;$i++){
+ int $lddx[$i] > 0 or die "Problems with field array [".(join ",",@lddx),"]";
+ $lddx[$i] = int $lddx[$i];
+ my @tmp = ();
+ $data[$i] = \@tmp;
+ my @tmr = ();
+ $datr[$i] = \@tmr;
+}
+
+my $nn = 0;
+
+foreach my $name (@myGlobList){
+ open HAND,"<$name" or die "Can't read \"$name\"";
+ while(<HAND>){
+  chomp;
+  next if(m/^\#/ and $icom);
+  my @token = split/$ldelim/;
+  my $good = 1;
+  for(my $i=0;$i<@lddx;$i++){
+   my $datt = $token[$lddx[$i]-1];
+   if($datt eq ""){ $good = 0; last;}
+  }
+  next unless($good);
+  for(my $i=0;$i<@lddx;$i++){
+   my $datt = $token[$lddx[$i]-1];
+   my $rdat = $data[$i];
+   push @$rdat,$datt;
+  }
+ }
+ close HAND;
+}
+
+$nn = scalar @{$data[0]};
+
+$nn>2 or die "Dataset too small ($nn)";
+
+for(my $i=0;$i<@lddx;$i++){
+ my $rdat = $data[$i];
+ my $rdar = $datr[$i];
+ array2rank($rdat,$nn,$rdar);
+}
+
+if($mdmp>0){					# dump data
+ my $tmp = "";
+ for(my $i=0;$i<@lddx;$i++){ $tmp .= "\t" if($tmp ne ""); $tmp .= sprintf "%d",$lddx[$i];}
+ print "# $tmp\n";
+ for(my $j=0;$j<$nn;$j++){
+  $tmp = "";
+  for(my $i=0;$i<@lddx;$i++){ my $rdat = ($mdmp==1)?($data[$i]):($datr[$i]); my $val = $$rdat[$j]; $tmp .= "\t" if($tmp ne ""); $tmp .= $val;}
+  print "$tmp\n";
+ }
+ exit;
+}
+
+for(my $i=0;$i<@lddx-1;$i++){
+ my $rdat1 = $data[$i];
+ my $rdar1 = $datr[$i];
+ for(my $j=$i+1;$j<@lddx;$j++){
+  my $rdat2 = $data[$j];
+  my $rdar2 = $datr[$j];
+  my $rp = corr_pearson($rdat1,$rdat2,$nn);
+  my $zp = $rp*999;
+  $zp = $rp/sqrt((1-$rp*$rp)/($nn-2)) if($rp*$rp<1);
+  my $rs = corr_pearson($rdar1,$rdar2,$nn);
+  my $zs = $rs*999;
+  $zs = $rs/sqrt((1-$rs*$rs)/($nn-2)) if($rs*$rs<1);
+  print "$dnam\t" if($dnam ne "");
+  printf "[%d,%d]\t%d\t%.4f\t%.2f\t%.4f\t%.2f",$lddx[$i],$lddx[$j],$nn,$rp,$zp,$rs,$zs;
+  if($nper>0){
+   my $pv = run_permutation_test($rdar1,$rdar2,$nn,$nper,$rp);
+   printf "\t%.4f",$pv;
+  }
+  if($nboo>0){
+   my ($r05,$r95) = run_bootstrap($rdar1,$rdar2,$nn,$nboo);
+   printf "\t%.4f\t%.4f",$r05,$r95;
+  }
+  print "\n";
+ }
+}
+
+############################################################
+#	run_bootstrap($rarx,$rary,$narr,$nboo)
+############################################################
+sub run_bootstrap
+{
+ my $rarx = shift;
+ my $rary = shift;
+ my $narr = shift;
+ my $nboo = shift;
+
+ my @arrx = (); my @arry = ();
+ my @rval = ();
+ for(my $nn = 0;$nn<$nboo;$nn++){
+  for(my $i=0;$i<$narr;$i++){
+   $r = int rand($narr);
+   $arrx[$i] = $$rarx[$r];
+   $arry[$i] = $$rary[$r];
+  }
+  $rval[$nn] = corr_pearson(\@arrx,\@arry,$narr);
+ }
+ @rval = sort {$a<=>$b} @rval;
+ 	#for(my $i=0;$i<$nboo;$i++){
+ 	# printf "%.4f\n",$rval[$i];
+ 	#}
+ my $r05 = array2quant(\@rval,$nboo,$quan);
+ my $r95 = array2quant(\@rval,$nboo,1-$quan);
+ return ($r05,$r95);
+}
+
+############################################################
+#	run_permutation_test($rarx,$rary,$narr,$nper,$corr)
+############################################################
+sub run_permutation_test
+{
+ my $rarx = shift;
+ my $rary = shift;
+ my $narr = shift;
+ my $nper = shift;
+ my $corr = shift;
+
+ my @arrx = (); my @arry = ();
+ for(my $i=0;$i<$narr;$i++){ $arrx[$i] = $$rarx[$i]; $arry[$i] = $$rary[$i];}
+ 
+ my $tmp = 0; my $r = 0;
+ my $ngre = 0;
+ for(my $nn = 0;$nn<$nper;$nn++){
+  for(my $i=0;$i<$narr;$i++){
+   $r = $i + int rand($narr-$i);
+   $tmp = $arrx[$i]; $arrx[$i] = $arrx[$r]; $arrx[$r] = $tmp;
+   $r = $i + int rand($narr-$i);
+   $tmp = $arry[$i]; $arry[$i] = $arry[$r]; $arry[$r] = $tmp;
+  }
+  my $rs = corr_pearson(\@arrx,\@arry,$narr);
+  if($corr<0){ $ngre++ if($rs<$corr);}
+  else{ $ngre++ if($rs>$corr);}
+ }
+ $ngre = 0.5 if($ngre==0);
+ return $ngre/$nper;
+}
