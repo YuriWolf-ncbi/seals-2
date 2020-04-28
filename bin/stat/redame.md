@@ -1,1 +1,1 @@
-# Statistics and numerical analysis
+# Statistics and numerical utilities
