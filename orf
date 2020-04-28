@@ -1,0 +1,373 @@
+#!/usr/bin/perl5.16
+
+############################################################
+#	Template:	0.2, May 02 2002
+#	Parent Path:	/net/gloin/export/home/wolf/bin/???
+############################################################
+
+############################################################
+#	System etc
+############################################################
+$Pver = "0.5";
+$Pdat = "March 29 2020";
+
+($Pnam) = ($0 =~ m/([^\/]+)$/);
+($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
+
+############################################################
+#	Definitions
+############################################################
+$code = 1;
+$frame = 1;
+$pmode = 0;
+$nmode = 0;
+$lmin = 16;
+$idwrd = 2;
+$delim = "[ ,;:|]";
+############################################################
+#	Code
+############################################################
+$ntname = "TCAG";
+$ntcomp = "AGTC";
+%codeaa = (
+"1"=> "FFLLSSSSYY**CC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+"2"=> "FFLLSSSSYY**CCWWLLLLPPPPHHQQRRRRIIMMTTTTNNKKSS**VVVVAAAADDEEGGGG",
+"3"=> "FFLLSSSSYY**CCWWTTTTPPPPHHQQRRRRIIMMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+"4"=> "FFLLSSSSYY**CCWWLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+"5"=> "FFLLSSSSYY**CCWWLLLLPPPPHHQQRRRRIIMMTTTTNNKKSSSSVVVVAAAADDEEGGGG",
+"6"=> "FFLLSSSSYYQQCC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+"9"=> "FFLLSSSSYY**CCWWLLLLPPPPHHQQRRRRIIIMTTTTNNNKSSSSVVVVAAAADDEEGGGG",
+"10"=>"FFLLSSSSYY**CCCWLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+"11"=>"FFLLSSSSYY**CC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+"12"=>"FFLLSSSSYY**CC*WLLLSPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+"13"=>"FFLLSSSSYY**CCWWLLLLPPPPHHQQRRRRIIMMTTTTNNKKSSGGVVVVAAAADDEEGGGG",
+"14"=>"FFLLSSSSYYY*CCWWLLLLPPPPHHQQRRRRIIIMTTTTNNNKSSSSVVVVAAAADDEEGGGG",
+"15"=>"FFLLSSSSYY*QCC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+"16"=>"FFLLSSSSYY*LCC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+"21"=>"FFLLSSSSYY**CCWWLLLLPPPPHHQQRRRRIIMMTTTTNNNKSSSSVVVVAAAADDEEGGGG",
+"22"=>"FFLLSS*SYY*LCC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+"23"=>"FF*LSSSSYY**CC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+"24"=>"FFLLSSSSYY**CCWWLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSSKVVVVAAAADDEEGGGG",
+"25"=>"FFLLSSSSYY**CCGWLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+"26"=>"FFLLSSSSYY**CC*WLLLAPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+"27"=>"FFLLSSSSYYQQCCWWLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+"28"=>"FFLLSSSSYYQQCCWWLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+"29"=>"FFLLSSSSYYYYCC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+"30"=>"FFLLSSSSYYEECC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+"31"=>"FFLLSSSSYYEECCWWLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+"33"=>"FFLLSSSSYYY*CCWWLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSSKVVVVAAAADDEEGGGG",
+"6000"=>"FFLLSSSSYYQQCCWWLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+"7001"=>"FFLLSSSSYY*QCCWWLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+"7010"=>"FFLLSSSSYYQ*CCWWLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+"7100"=>"FFLLSSSSYYQQCC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+"8011"=>"FFLLSSSSYY**CCWWLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+"8101"=>"FFLLSSSSYY*QCC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+"8110"=>"FFLLSSSSYYQ*CC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+"9111"=>"FFLLSSSSYY**CC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+);
+
+%codest = (
+"1"=> "---M---------------M---------------M----------------------------",
+"2"=> "--------------------------------MMMM---------------M------------",
+"3"=> "----------------------------------MM----------------------------",
+"4"=> "--MM---------------M------------MMMM---------------M------------",
+"5"=> "---M----------------------------MMMM---------------M------------",
+"6"=> "-----------------------------------M----------------------------",
+"9"=> "-----------------------------------M---------------M------------",
+"10"=>"-----------------------------------M----------------------------",
+"11"=>"---M---------------M------------MMMM---------------M------------",
+"12"=>"-------------------M---------------M----------------------------",
+"13"=>"-----------------------------------M----------------------------",
+"14"=>"-----------------------------------M----------------------------",
+"15"=>"-----------------------------------M----------------------------",
+"16"=>"-----------------------------------M----------------------------",
+"21"=>"-----------------------------------M---------------M------------",
+"22"=>"-----------------------------------M----------------------------",
+"23"=>"--------------------------------M--M---------------M------------",
+"24"=>"---M---------------M---------------M---------------M------------",
+"25"=>"---M-------------------------------M---------------M------------",
+"26"=>"-------------------M---------------M----------------------------",
+"27"=>"-----------------------------------M----------------------------",
+"28"=>"-----------------------------------M----------------------------",
+"29"=>"-----------------------------------M----------------------------",
+"30"=>"-----------------------------------M----------------------------",
+"31"=>"-----------------------------------M----------------------------",
+"33"=>"---M---------------M---------------M---------------M------------",
+"6000"=>"---M---------------M------------MMMM---------------M------------",
+"7001"=>"---M---------------M------------MMMM---------------M------------",
+"7010"=>"---M---------------M------------MMMM---------------M------------",
+"7100"=>"---M---------------M------------MMMM---------------M------------",
+"8011"=>"---M---------------M------------MMMM---------------M------------",
+"8101"=>"---M---------------M------------MMMM---------------M------------",
+"8110"=>"---M---------------M------------MMMM---------------M------------",
+"9111"=>"---M---------------M------------MMMM---------------M------------",
+);
+
+%codenm = (
+"1"=> "Standard",
+"2"=> "Vertebrate Mitochondrial",
+"3"=> "Yeast Mitochondrial",
+"4"=> "Mold Mitochondrial; Protozoan Mitochondrial; Coelenterate Mitochondrial; Mycoplasma; Spiroplasma",
+"5"=> "Invertebrate Mitochondrial",
+"6"=> "Ciliate Nuclear; Dasycladacean Nuclear; Hexamita Nuclear",
+"9"=> "Echinoderm Mitochondrial; Flatworm Mitochondrial",
+"10"=>"Euplotid Nuclear",
+"11"=>"Bacterial and Plant Plastid",
+"12"=>"Alternative Yeast Nuclear",
+"13"=>"Ascidian Mitochondrial",
+"14"=>"Alternative Flatworm Mitochondrial",
+"15"=>"Blepharisma Macronuclear",
+"16"=>"Chlorophycean Mitochondrial",
+"21"=>"Trematode Mitochondrial",
+"22"=>"Scenedesmus obliquus mitochondrial",
+"23"=>"Thraustochytrium mitochondrial",
+"24"=>"Pterobranchia mitochondrial",
+"25"=>"Candidate Division SR1 and Gracilibacteria",
+"26"=>"Pachysolen tannophilus Nuclear Code",
+"27"=>"Karyorelict Nuclear Code",
+"28"=>"Condylostoma Nuclear Code",
+"29"=>"Mesodinium Nuclear Code",
+"30"=>"Peritrich Nuclear Code",
+"31"=>"Blastocrithidia Nuclear Code",
+"33"=>"Cephalodiscidae Mitochondrial UAA-Tyr Code",
+"6000"=>"generic no-stop code",
+"7001"=>"generic TAA-stop code",
+"7010"=>"generic TAG-stop code",
+"7100"=>"generic TGA-stop code",
+"8011"=>"generic TAA+TAG-stop code",
+"8101"=>"generic TAA+TGA-stop code",
+"8110"=>"generic TAG+TGA-stop code",
+"9111"=>"generic TAA+TAG+TGA-stop (standard) code",
+);
+
+############################################################
+#	Global variables
+############################################################
+%tranaa = ();
+%transt = ();
+
+############################################################
+#	Instructions etc
+############################################################
+$Instructions = <<EOINPUT;
+
+$Path/$Pnam $Pver, $Pdat
+
+Use: $Pnam name [options]
+
+Translate.
+
+Options:
+
+	-c=n		code n (default $code, <0 list)
+
+	-f=n		frame n (default $frame; 0 - all six)
+
+	-l=n		minimum n aa in orf (default $lmin)
+
+	-m=n		translation mode n (default $pmode)
+			0 - one FASTA record per frame
+			1 - stop-to-stop translations
+			2 - from the first start 
+
+	-n=n		naming mode n (default $nmode)
+			0 - add frame/fragment info in square brackets
+			1 - "ID_start_stop"
+			2 - "ID.start-stop"
+			3 - "ID_frN" (N=1..6)
+
+	-w=n		use n-th word of ID (default $idwrd; 0 - all)
+EOINPUT
+
+############################################################
+#	code start
+############################################################
+
+#---	get and process arguments --------------------------
+my_args(@ARGV);
+-t STDIN and !@myGlobList and print $Instructions and exit 0;
+push @myGlobList,"-" unless(-t STDIN);
+
+$code = $myOptList{"c"}+0 if(exists $myOptList{"c"});
+$frame = $myOptList{"f"} if(exists $myOptList{"f"});
+$lmin = $myOptList{"l"} if($myOptList{"l"}>0);
+$pmode = $myOptList{"m"} if(exists $myOptList{"m"});
+$nmode = $myOptList{"n"} if(exists $myOptList{"n"});
+$idwrd = $myOptList{"w"} if(exists $myOptList{"w"});
+
+if($code<=0){
+ foreach my $cc (sort {$a<=>$b} keys %codenm){
+  printf "%d\t%s\n",$cc,$codenm{$cc};
+ }
+ exit;
+}
+
+make_table();
+
+foreach my $name (@myGlobList){
+ my $savedel = $/;
+ $/="\n>";
+ open HAND,"<$name" or die "Can't read \"$name\"";
+ while(<HAND>){
+  chomp;
+  my ($def,@rest)=split /\n+/;
+  $def =~ s/^>*//;
+  my ($id) = split/ +/,$def;
+  $id = (split/$delim/,$id)[$idwrd-1] if($idwrd>0);
+  my $seq = join "",@rest;
+  $seq =~ tr/ \t//d;
+  $seq = uc $seq;
+  $seq =~ tr/U/T/;
+  my $len = length $seq;
+
+  if($frame>0){
+   translate(\$def,\$seq,$frame,$len,$id);
+  }elsif($frame<0){
+   $seq = reverse $seq;
+   $seq =~ tr/AGCT/TCGA/;
+   translate(\$def,\$seq,$frame,$len,$id);
+  }else{
+   for(my $i=1;$i<=3;$i++){ translate(\$def,\$seq,$i,$len,$id);}
+   $seq = reverse $seq;
+   $seq =~ tr/AGCT/TCGA/;
+   for(my $i=-1;$i>=-3;$i--){ translate(\$def,\$seq,$i,$len,$id);}
+  }
+
+ }
+ close HAND;
+ $/=$savedel;
+}
+
+############################################################
+#	make_table()
+############################################################
+sub make_table
+{
+ die "Unknown code # \"$code\"" unless(exists $codeaa{$code});
+ my @ntlist = split//,$ntname;
+ my @aalist = split//,$codeaa{$code};
+ my @stlist = split//,$codest{$code};
+ 
+ for(my $i=0,$x=0;$i<4;$i++){
+  for(my $j=0;$j<4;$j++){
+   for(my $k=0;$k<4;$k++,$x++){
+    my $codon = $ntlist[$i].$ntlist[$j].$ntlist[$k];
+    $tranaa{$codon} = $aalist[$x];
+    $transt{$codon} = 1 if($stlist[$x] ne "-");
+   }
+  }
+ }
+ $tranaa{"---"} = "-";
+}
+
+############################################################
+#	translate(\$def,\$seq,$frame,$ntln,$sqid);
+############################################################
+sub translate
+{
+ my $rdef = shift;
+ my $rseq = shift;
+ my $fram = shift;
+ my $ntln = shift;
+ my $sqid = shift;
+ my $offs = abs($fram) - 1;
+ 
+ my $tra = "";
+ for(my $i=$offs;$i+2<$ntln;$i+=3){
+  my $codon = substr $$rseq,$i,3;
+  my $aa = $tranaa{$codon};
+  $aa = "X" unless($aa);
+  $aa = lc $aa if($transt{$codon});
+  $tra .= $aa;
+ }
+ print_results($rdef,\$tra,$fram,$ntln,$sqid);
+}
+
+############################################################
+#	print_results($rdef,\$tra,$fram,$ntln,$sqid);
+############################################################
+sub print_results
+{
+ my $rdef = shift;
+ my $rtra = shift;
+ my $fram = shift;
+ my $ntln = shift;
+ my $sqid = shift;
+
+ if($pmode==1 or $pmode==2){
+  my $regexp = "([A-Za-z]+)";
+  $regexp = "([a-z][A-Za-z]*)" if($pmode==2);
+  while($$rtra=~m/$regexp/g){
+   my $seq = uc $1;
+   my $ppp = pos $$rtra;
+   my $lll = length $seq;
+   next if($lll<$lmin);
+   my $r1 = ($ppp - $lll)*3 + abs($fram);
+   my $r2 = $ppp*3 + abs($fram) - 1;
+   if($fram<0){
+    $r1 = $ntln - $r1 + 1;
+    $r2 = $ntln - $r2 + 1;
+   }
+   my $name = "$$rdef [frame $fram] [range $r1..$r2] [len $lll]";
+   $name = "$sqid\_$r1\_$r2 ".$name if($nmode==1);
+   $name = "$sqid.$r1-$r2 ".$name if($nmode>=2);
+   print ">$name\n$seq\n";
+  }
+ }elsif($pmode==2){
+ }else{
+  my $name = "$$rdef [frame $fram]";
+  $name = "$sqid.$fram ".$name if($nmode==1 or $nmode==2);
+  if($nmode==3){
+   my $frax = $fram; $frax = 3 - $fram if($fram<0);
+   $name = "$sqid"."_fr".$frax." ".$name;
+  }
+  print ">$name\n$$rtra\n";
+ }
+}
+
+############################################################
+#	max min
+############################################################
+sub max
+{
+ my $max = shift;
+ while(@_){
+  my $x = shift;
+  $max = $x if($x>$max);
+ }
+ return $max;
+}
+
+sub min
+{
+ my $min = shift;
+ while(@_){
+  my $x = shift;
+  $min = $x if($x<$min);
+ }
+ return $min;
+}
+
+
+############################################################
+#	my_args
+############################################################
+sub my_args
+{
+ my $nop = scalar @_;
+ for($i=0;$i<$nop;$i++){
+  if($_[$i]=~m/^-[^=]+=$/){
+   my $new = $_[$i].$_[$i+1];
+   splice @_,$i,2,$new;
+  }
+ }
+ foreach my $arg (@_){
+  my ($opt) = ($arg =~ m/^-(\w+)/);
+  my ($val) = ($arg =~ m/^-\w+=(.*)/);
+  if($opt){
+   $myOptList{$opt} = $val;
+  }else{
+   push @myGlobList,$arg;
+  }
+ }
+}
