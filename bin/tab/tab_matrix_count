@@ -1,0 +1,152 @@
+#!/usr/bin/perl5.16
+
+############################################################
+#	Template:	0.3, November 04 2004
+#	Parent Path:	/net/gloin/export/home/wolf/bin/???
+############################################################
+
+############################################################
+#	System etc
+############################################################
+$Pver = "0.1";
+$Pdat = "November 07 2014";
+
+($Pnam) = ($0 =~ m/([^\/]+)$/);
+($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
+
+$Ppid = $$;	# Process ID
+############################################################
+#	Definitions
+############################################################
+$icom = 0;
+$ldelim = "\t";
+$k1 = 1;
+$k2 = 2;
+$kw = 0;
+
+############################################################
+#	Global variables
+############################################################
+%matr;
+%lst2;
+
+############################################################
+#	Instructions etc
+############################################################
+$Instructions = <<EOINPUT;
+
+$Path/$Pnam $Pver, $Pdat
+
+Use: $Pnam source-table [options]
+
+Reads the table, aggregates specified keys
+
+Options:
+
+	-k1=n		use n-th field as the 1st key (default $k1)
+
+	-k2=n		use n-th field as the 2nd key (default $k2)
+
+	-kw=n		use n-th field as the weight (default none)
+
+	-comm=n		lines starting with \"\#\" (default - pass through)
+			1 - skip
+			2 - treat as normal
+
+	-s=\"delim\"	delimiters to split line (default \"\\t\")
+EOINPUT
+
+############################################################
+#	code start
+############################################################
+
+#---	get and process arguments --------------------------
+my_args(@ARGV);
+-t STDIN and !@myGlobList and print $Instructions and exit 0;
+push @myGlobList,"-" unless(-t STDIN);
+
+$icom = int $myOptList{"comm"} if(int $myOptList{"comm"}>0);
+$ldelim = $myOptList{"s"} if($myOptList{"s"} ne "");
+$k1 = int $myOptList{"k1"} if(int $myOptList{"k1"}>0);
+$k2 = int $myOptList{"k2"} if(int $myOptList{"k2"}>0);
+$kw = int $myOptList{"kw"} if(int $myOptList{"kw"}>0);
+
+#---	read the source table ------------------------------
+foreach my $fmas (@myGlobList){
+ print STDERR "$Pnam:\tReading $fmas\n";
+ open HAND,"<$fmas" or die "Can't read \"$fmas\"";
+ while(<HAND>){
+  chomp;
+  if(m/^\#/){ print "$_\n" if($icom==0); next if($icom<2);}
+  my @data = split/$ldelim/;
+  my $v1 = $data[$k1-1];
+  my $v2 = $data[$k2-1];
+  my $wt = 1; $wt = $data[$kw-1] if($kw>0);
+  unless($matr{$v1}){ my %tmp = (); $matr{$v1} = \%tmp;}
+  my $rmat = $matr{$v1};
+  $$rmat{$v2} += $wt;
+  $lst2{$v2} = 1;
+ }
+ close HAND;
+}
+
+#---	output ---------------------------------------------
+foreach my $v2 (sort keys %lst2){ printf "\t%s",$v2;}
+print "\n";
+
+foreach my $v1 (sort keys %matr){
+ printf "%s",$v1;
+ my $rmat = $matr{$v1};
+ foreach my $v2 (sort keys %lst2){
+  if($kw>0){ printf "\t%.4e",$$rmat{$v2};}
+  else{ printf "\t%d",$$rmat{$v2};}
+ }
+ print "\n";
+}
+
+############################################################
+#	max min
+############################################################
+sub max
+{
+ my $max = shift;
+ while(@_){
+  my $x = shift;
+  $max = $x if($x>$max);
+ }
+ return $max;
+}
+
+sub min
+{
+ my $min = shift;
+ while(@_){
+  my $x = shift;
+  $min = $x if($x<$min);
+ }
+ return $min;
+}
+
+
+############################################################
+#	my_args
+############################################################
+sub my_args
+{
+ my $nop = scalar @_;
+ for($i=0;$i<$nop;$i++){
+  if($_[$i]=~m/^-[^=]+=$/){
+   my $new = $_[$i].$_[$i+1];
+   splice @_,$i,2,$new;
+  }
+ }
+ foreach my $arg (@_){
+  my ($opt) = ($arg =~ m/^-(\w+)/);
+  my ($val) = ($arg =~ m/^-\w+=(.*)/);
+  if($opt){
+   $myOptList{$opt} = $val;
+  }else{
+   push @myGlobList,$arg;
+  }
+ }
+}
