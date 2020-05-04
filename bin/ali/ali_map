@@ -1,0 +1,217 @@
+#!/usr/bin/perl5.16
+
+############################################################
+#	Template:	0.2, May 02 2002
+#	Parent Path:	/net/gloin/export/home/wolf/bin/???
+############################################################
+
+############################################################
+#	System etc
+############################################################
+$Pver = "0.1";
+$Pdat = "July 19 2005";
+
+($Pnam) = ($0 =~ m/([^\/]+)$/);
+($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
+
+############################################################
+#	Definitions
+############################################################
+$sloppy = 0;
+
+############################################################
+#	Global variables
+############################################################
+$alilen = 0;
+@nams = ();
+%seqs = ();
+@acoo = ();
+
+############################################################
+#	Instructions etc
+############################################################
+$Instructions = <<EOINPUT;
+
+$Path/$Pnam $Pver, $Pdat
+
+Use: $Pnam name [options]
+
+Reads alignment in seqrows format and a set of coordinates;
+prints out coordinates mapped to all sequences and to alignment.
+
+Options:
+
+	-c=coord	coordinates as
+			"SeqID:c1,c2,..."
+			if SeqID is omitted, alignment coordinates are assumed
+
+	-f=file		read coordinates from file (more than one line)
+
+	-sloppy		skip test for sequence lengths
+EOINPUT
+
+############################################################
+#	code start
+############################################################
+
+#---	get and process arguments --------------------------
+my_args(@ARGV);
+!@myGlobList and print $Instructions and exit 0;
+
+$coord = $myOptList{"c"} if(exists $myOptList{"c"});
+$cfile = $myOptList{"f"} if(exists $myOptList{"f"});
+$sloppy = 1 if(exists $myOptList{"sloppy"});
+
+my $fnam = shift @myGlobList;
+
+#---	read alignment -------------------------------------
+$alilen = 0;
+open HAND,"<$fnam" or die "Can't read \"$fnam\"";
+while(<HAND>){
+ chomp;
+ my ($nam,$seq)=split /\s+/;
+ my $len = length $seq;
+ next unless($len);
+ if($alilen==0){
+  $alilen = $len;
+ }elsif($sloppy==0){
+  die "length of \"$nam\" ($len) is not $alilen" unless($len==$alilen);
+ }
+ push @nams,$nam;
+ $seqs{$nam} = $seq;
+}
+close HAND;
+
+if($coord ne ""){
+ map_align($coord);
+}
+
+if($cfile ne ""){
+ open HAND,"<$cfile" or die "Can't read \"$cfile\"";
+ while(<HAND>){
+  chomp;
+  map_align($_);
+ }
+ close HAND;
+}
+
+############################################################
+#	map_align($coord)
+############################################################
+sub map_align
+{
+ my $coord = shift;
+
+ @acoo = split/\s*:\s*/,$coord;
+ my $seqid = shift @acoo if(@acoo>1);
+ @acoo = split/\s*,\s*/,$acoo[0];
+ if($seqid){
+  for(my $i=0;$i<@acoo;$i++){
+   $acoo[$i] = coord_s2a($seqid,$acoo[$i]);
+  }
+ }
+ print "# $coord\n";
+ foreach my $nam (@nams){
+  print "$nam";
+  foreach my $num (@acoo){
+   my $pp = coord_a2s($nam,$num);
+   print "\t$pp";
+  }
+  print "\n";
+ }
+ print "_ali_\t",(join "\t",@acoo),"\n";
+}
+
+############################################################
+#	coord_s2a($nam,$num)
+############################################################
+sub coord_s2a
+{
+ my $name = shift;
+ my $xpos = shift;
+ $xpos--;
+ 
+ my $seq = $seqs{$name};
+ my $apos = -1;
+ my $spos = -1;
+ while($seq=~m/(.)/g){
+  $apos++;
+  $spos++ if($1 ne "-");
+  last if($spos>=$xpos);
+ }
+ $apos = $alilen - 1 if($apos>=$alilen);
+	#print "$name -> ALI\t$xpos -> $apos\n";
+ return $apos + 1;
+}
+
+############################################################
+#	coord_a2s($nam,$num)
+############################################################
+sub coord_a2s
+{
+ my $name = shift;
+ my $xpos = shift;
+ $xpos--;
+ 
+ my $seq = $seqs{$name};
+ my $apos = -1;
+ my $spos = -1;
+ my $flag = 0.5;
+ while($seq=~m/(.)/g){
+  $apos++;
+  $spos++ if($1 ne "-");
+  if($1 ne "-"){ $flag = 0;}
+  else{$flag = 0.5;}
+  last if($apos>=$xpos);
+ }
+ 
+	#print "\nALI -> $name\t$xpos -> $spos\n";
+ return $spos + $flag + 1;
+}
+
+############################################################
+#	max min
+############################################################
+sub max
+{
+ my $max = shift;
+ while(@_){
+  my $x = shift;
+  $max = $x if($x>$max);
+ }
+ return $max;
+}
+
+sub min
+{
+ my $min = shift;
+ while(@_){
+  my $x = shift;
+  $min = $x if($x<$min);
+ }
+ return $min;
+}
+
+
+############################################################
+#	my_args
+############################################################
+sub my_args
+{
+ my $nop = scalar @_;
+ for($i=0;$i<$nop;$i++){
+  if($_[$i]=~m/^-[^=]+=$/){
+   my $new = $_[$i].$_[$i+1];
+   splice @_,$i,2,$new;
+  }
+ }
+ foreach my $arg (@_){
+  my ($opt) = ($arg =~ m/^-(\w+)/);
+  my ($val) = ($arg =~ m/^-\w+=(.*)/);
+  if($opt){
+   $myOptList{$opt} = $val;
+  }else{
+   push @myGlobList,$arg;
+  }
+ }
+}
