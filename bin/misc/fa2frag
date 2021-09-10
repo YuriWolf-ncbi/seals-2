@@ -1,0 +1,279 @@
+#!/usr/bin/perl5.16
+
+############################################################
+#	Template:	0.2, May 02 2002
+#	Parent Path:	/net/gloin/export/home/wolf/bin/???
+############################################################
+
+############################################################
+#	System etc
+############################################################
+$Pver = "0.7";
+$Pdat = "April 26 2020";
+
+($Pnam) = ($0 =~ m/([^\/]+)$/);
+($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
+
+############################################################
+#	Definitions
+############################################################
+$idwrd = 2;
+$delim = "[ ,;:|]";
+
+$cpad = "";
+$exth = 0;
+$extt = 0;
+$modei = 0;
+
+$moden = 0;
+%comp = ("A"=>"T","C"=>"G","G"=>"C","T"=>"A","U"=>"A",
+	 "R"=>"Y","Y"=>"R","S"=>"S","W"=>"W","-"=>"-");
+
+############################################################
+#	Global variables
+############################################################
+$rangef;$rangel;
+%range;
+
+############################################################
+#	Instructions etc
+############################################################
+$Instructions = <<EOINPUT;
+
+$Path/$Pnam $Pver, $Pdat
+
+Use: $Pnam name [options]
+
+Splits the FASTA file into fragments. Appends deflines with fragment
+definitions.
+
+Options:
+
+	-f=rangefile	file with the list of fragments
+
+	-r=rangelist	semicolon-delimited list of ranges
+
+	-w=n		use n-th word of ID (default $idwrd; 0 - all)
+
+	-nt		use nucleotide complementarity rules for inversion
+
+	-pad=X		pad out-of-range fragments with symbol X
+
+	-h=n		extend the head of each segment by n positions
+
+	-t=n		extend the tail of each segment by n positions
+
+	-id=n		add frag data to sequence ID
+			1 - "lcl|71027029[275..598]"
+			2 - "lcl|71027029.275..598"
+			3 - "71027029.275..598"
+			4 - "71027029.5-51=134-556"
+
+Fragments:
+
+	1015634:1..20,31..50
+
+	ID is optional; no ID means apply to all sequences in the input.
+
+	Comma-delinited list of ranges concatenates segments.
+
+	Reversed range boundaries mean inverted (complementary) sequence
+
+Examples:
+
+fa2frag single.fa -r=21..40 # extract fragment 21..40 from the sequence
+
+fa2frag many.fa -r="MT601:21..40;MT602:101..200" # extract fragment 21..40 from MT601 and 101..200 from MT602; ignore the other sequences.
+
+fa2frag single.fa -r="21..40,51..70" # conactenate segments 21..40 and 51..70 from the sequence and output them as a single fragment
+
+fa2frag single.fa -r="21..40;51..70" # extract fragments 21..40 and 51..70 from the sequence and output them as two separate fragments
+
+fa2frag single.fa -r="300..1" -nt # extract fragment 1..300 from the sequence and output the reverse complement
+
+fa2frag many.fa -f=frags.lst # extract fragments listed in frags.lst (one fragmnet per line) from the sequences.
+
+EOINPUT
+
+############################################################
+#	code start
+############################################################
+
+#---	get and process arguments --------------------------
+my_args(@ARGV);
+-t STDIN and !@myGlobList and print $Instructions and exit 0;
+push @myGlobList,"-" unless(-t STDIN);
+
+$rangef = $myOptList{"f"} if(exists $myOptList{"f"});
+$rangel = $myOptList{"r"} if(exists $myOptList{"r"});
+$idwrd = $myOptList{"w"} if(exists $myOptList{"w"});
+$moden = 1 if(exists $myOptList{"nt"});
+$cpad = $myOptList{"pad"} if(exists $myOptList{"pad"});
+$exth = $myOptList{"h"} if($myOptList{"h"}>0);
+$extt = $myOptList{"t"} if($myOptList{"t"}>0);
+$modei = 1 if(exists $myOptList{"id"});
+$modei = int $myOptList{"id"} if(int $myOptList{"id"}>0);
+
+
+foreach my $frag (split /;/,$rangel){
+ my $id = "*";
+ my $fr = $frag;
+ ($id,$fr) = split/\:/,$frag if($frag =~ m/\:/);
+ $fr =~ tr/\s//;
+ $range{$id} .= ";" if($range{$id});
+ $range{$id} .= $fr;
+}
+
+if($rangef){
+ open HAND,"<$rangef" or die "Can't read \"$rangef\"";
+ while(<HAND>){
+  chomp;
+  my $id = "*";
+  my $fr = $_;
+  ($id,$fr) = split/\:/,$_ if($_ =~ m/\:/);
+  $fr =~ tr/\s//;
+  $range{$id} .= ";" if($range{$id});
+  $range{$id} .= $fr;
+ }
+ close HAND;
+}
+
+die "Empty list of fragments" unless(keys %range);
+
+foreach my $name (@myGlobList){
+ my $savedel = $/;
+ $/="\n>";
+ open HAND,"<$name" or die "Can't read \"$name\"";
+ while(<HAND>){
+  chomp;
+  my ($def,@rest)=split /\n+/;
+  $def =~ s/^>*//;
+  my $seq = join "",@rest;
+  $seq =~ tr/ \t//d;
+  my ($id) = split/ +/,$def;
+  $id = (split/$delim/,$id)[$idwrd-1] if($idwrd>0);
+  my $lseq = length $seq;
+  next unless($lseq);
+  spit_out(\$id,\$def,\$seq,$range{$id},$lseq) if($range{$id} ne "");
+  spit_out(\$id,\$def,\$seq,$range{"*"},$lseq) if($range{"*"} ne "");
+ }
+ close HAND;
+ $/=$savedel;
+}
+
+############################################################
+#	spit_out(\$id,\$def,\$seq,$range{$id},$lseq)
+############################################################
+sub spit_out
+{
+ my $ridd = shift;
+ my $rdef = shift;
+ my $rseq = shift;
+ my $rang = shift;
+ my $lseq = shift;
+ 
+ foreach my $frag (split /;/,$rang){
+  my $outd = "";
+  my $outs = "";
+  foreach my $rang (split /[,=]/,$frag){
+   my $outr = "";
+   my $moder = 0;
+   my ($pbeg,$pend) = split/\.\./,$rang;				# standard from
+   if($pend eq ""){ ($pbeg,$pend) = split/-/,$rang;}			# alt form
+   if($pend eq ""){ next;}						# not a valid range
+   $pbeg = int($pbeg); $pend = int($pend);
+   if($pbeg>$pend){
+    my $temp = $pbeg; $pbeg = $pend; $pend = $temp; $moder = 1;
+    $temp = $exth; $extt = $exth; $exth = $temp;
+   }
+   $pbeg = $pbeg - $exth - 1;
+   $pend = $pend + $extt - 1;
+   my $padh = 0;
+   if($pbeg<0){ $padh = -$pbeg; $pbeg = 0;}
+   elsif($pbeg>=$lseq){ next;}
+   my $padt = 0;
+   if($pend>=$lseq){ $padt = $pend - $lseq + 1; $pend = $lseq - 1;}
+   elsif($pend<0){ next;}
+   next if($pend-$pbeg<=0);
+   $outd .= "," if($outd);
+   $outd .= sprintf "%d..%d",($moder)?($pend+1):($pbeg+1),($moder)?($pbeg+1):($pend+1);
+   my $intr = substr $$rseq,$pbeg,$pend-$pbeg+1;
+   for(my $i=0;$i<$padh;$i++){ $outr .= $cpad;}
+   $outr .= $intr;
+   for(my $i=0;$i<$padt;$i++){ $outr .= $cpad;}
+   if($moder){
+    $outr = reverse $outr;
+    $outr =~ tr/AGCTRYSW-/TCGAYRSW-/ if($moden);
+   }
+   $outs .= $outr;
+  }
+  next if($outs eq "");
+  if($modei==1){ $outd = "lcl|".$$ridd."[".$outd."] ".$$rdef;}
+  elsif($modei==2){ $outd = "lcl|".$$ridd.".".$outd." ".$$rdef;}
+  elsif($modei==3){ $outd = $$ridd.".".$outd." ".$$rdef;}
+  elsif($modei==4){ $outd =~ s/\.\./-/g; $outd =~ s/,/=/g; $outd = $$ridd.".".$outd." ".$$rdef;}
+  else{$outd = $$rdef." [$outd]";}
+  print ">$outd\n$outs\n";
+ }
+}
+
+############################################################
+#	complement($intr)
+############################################################
+sub complement
+{
+ my $seq = shift;
+ my @sar = split//,$seq;
+ for(my $i=0;$i<@sar;$i++){
+  $sar[$i] = $comp{$sar[$i]};
+  $sar[$i] = "N" unless($sar[$i]);
+ }
+ return join "",@sar;
+}
+
+############################################################
+#	max min
+############################################################
+sub max
+{
+ my $max = shift;
+ while(@_){
+  my $x = shift;
+  $max = $x if($x>$max);
+ }
+ return $max;
+}
+
+sub min
+{
+ my $min = shift;
+ while(@_){
+  my $x = shift;
+  $min = $x if($x<$min);
+ }
+ return $min;
+}
+
+
+############################################################
+#	my_args
+############################################################
+sub my_args
+{
+ my $nop = scalar @_;
+ for($i=0;$i<$nop;$i++){
+  if($_[$i]=~m/^-[^=]+=$/){
+   my $new = $_[$i].$_[$i+1];
+   splice @_,$i,2,$new;
+  }
+ }
+ foreach my $arg (@_){
+  my ($opt) = ($arg =~ m/^-(\w+)/);
+  my ($val) = ($arg =~ m/^-\w+=(.*)/);
+  if($opt){
+   $myOptList{$opt} = $val;
+  }else{
+   push @myGlobList,$arg;
+  }
+ }
+}
