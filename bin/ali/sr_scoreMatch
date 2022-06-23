@@ -153,7 +153,9 @@ close HAND;
 #---	compute normalization ------------------------------
 my $snor = 0;
 for(my $i=0;$i<$nsta;$i++){ $snor += $lsco[$i] * $lswe[$i];}
-for(my $i=0;$i<@lnam;$i++){ $lsco[$i] /= $snor;}
+if($snor>0){
+ for(my $i=0;$i<@lnam;$i++){ $lsco[$i] /= $snor;}
+}
 
 #---	output ---------------------------------------------
 for(my $i=0;$i<@lnam;$i++){
