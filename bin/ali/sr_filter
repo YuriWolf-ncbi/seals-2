@@ -8,8 +8,8 @@
 ############################################################
 #	System etc
 ############################################################
-$Pver = "0.7";
-$Pdat = "April 08 2020";
+$Pver = "0.8";
+$Pdat = "May 10 2020";
 
 ($Pnam) = ($0 =~ m/([^\/]+)$/);
 ($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
@@ -31,6 +31,7 @@ $pseudo = 0;
 $pseudq = 0.0;
 $igno = 0;
 $prof = 0;
+$prxx = 0;
 $cons = 0;
 $hpro = 0;
 $grcon = 0.499;
@@ -150,6 +151,8 @@ Options:
 
 	-profile	print profile in seqcolumns
 
+	-profake	print profile in seqcolumns using 1st sequence as consensus
+
 	-homogen	print homogeneity values (0-10)
 
 	-consens	print consensus only (implies -hocut)
@@ -184,6 +187,7 @@ $pseudo = $myOptList{"pse"}+0 if($myOptList{"pse"} ne "");
 $pseudq = $myOptList{"psq"}+0 if($myOptList{"psq"} ne "");
 $grswe = $myOptList{"grswe"}+0 if($myOptList{"grswe"} ne "");
 $prof = 1 if(exists $myOptList{"profile"});
+$prxx = 1 if(exists $myOptList{"profake"});
 $hpro = 1 if(exists $myOptList{"homogen"});
 $cons = 2 if(exists $myOptList{"consens"});
 $cons = 1 if(exists $myOptList{"conplus"});
@@ -192,6 +196,19 @@ $grcon = $myOptList{"gcon"} if(exists $myOptList{"gcon"});
 $hocon = $myOptList{"hcon"} if(exists $myOptList{"hcon"});
 $nacon = $myOptList{"ncon"} if($myOptList{"ncon"} ne "");
 
+if($prxx>0){			# fake profile, no filtering, no consensus
+ $prof = 1;
+ $cons = 0;
+ $gncut = 0x7fffffff;
+ $gnbar = 0;
+ $grcut = 1.0;
+ $grbar = 0.0;
+ $iccut = -100.0;
+ $icbar = 100.0;
+ $hocut = -100.0;
+ $hobar = 100.0;
+}
+
 if(exists $myOptList{"nt"}){
  %aafreq = %ntfreq;
  %simmat = %sntmat;
@@ -199,6 +216,8 @@ if(exists $myOptList{"nt"}){
 }
 
 $hocut = 0 if(($cons>0 or $hpro>0) and $hocut<0);
+
+$grswe = -1 if($myOptList{"gncut"} ne "" or $myOptList{"gnbar"} ne "");
 
 if($iccut>=0.0){
  foreach my $aa (keys %aafreq){ $aafrel{$aa} = log($aafreq{$aa});}
@@ -402,6 +421,14 @@ sub ali_print
    next if($$rppp{"g"}>$grcut*$nseq+$EPSILON or $$rppp{"g"}<$grbar*$nseq-$EPSILON);
    next if($$rppp{"i"}<$iccut-$EPSILON or $$rppp{"i"}>$icbar+$EPSILON);
    next if($$rppp{"h"}<$hocut-$EPSILON or $$rppp{"h"}>$hobar+$EPSILON);
+   if($prxx>0){
+    $$rppp{"c"} = substr($$rseq[$i],0,1);
+    if($$rppp{"c"} eq "-"){
+     $$rppp{"g"} = $nseq; $$rppp{"h"} = 0;
+    }else{
+     $$rppp{"g"} = 0; $$rppp{"h"} = 1;
+    }
+   }
    printf "%s",$$rppp{"c"} if($cons>0);
    printf "%s\t%d\t%.3f\t%.3f\t%.3f\t%s\n",$$rseq[$i],$nseq+$ncon,$$rppp{"g"},$$rppp{"i"},$$rppp{"h"},$$rppp{"c"};
   }
