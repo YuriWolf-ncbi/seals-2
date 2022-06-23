@@ -8,8 +8,8 @@
 ############################################################
 #	System etc
 ############################################################
-$Pver = "0.1";
-$Pdat = "July 03 2014";
+$Pver = "0.2";
+$Pdat = "July 27 2020";
 
 ($Pnam) = ($0 =~ m/([^\/]+)$/);
 ($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
@@ -32,6 +32,7 @@ $mins = 4;
 $name = "subtree";
 $stre = "tre";
 
+$rsoft = "0";
 $DEBUG = "0";
 
 ############################################################
@@ -65,6 +66,8 @@ Options:
 	-powp=x		paralogy power (default $powp)
 
 	-powl=x		branch length power power (default $powl)
+
+	-rsoft		"soft" option for root preference
 
 	-mins=n		minimum number of species (default $mins)
 
@@ -103,6 +106,7 @@ $powp = $myOptList{"powp"}+0 if(exists $myOptList{"powp"});
 $powl = $myOptList{"powl"}+0 if(exists $myOptList{"powl"});
 $mins = int $myOptList{"mins"} if((int $myOptList{"mins"})>0);
 $minl = int $myOptList{"minl"} if((int $myOptList{"minl"})>0);
+$rsoft = 1 if(exists $myOptList{"rsoft"});
 $DEBUG = 1 if(exists $myOptList{"DEBUG"});
 
 $ftre = shift @myGlobList;
@@ -172,7 +176,18 @@ sub count_species
  $$rnod{"scnt"} = scalar keys %$rlst;
  $maxl = $$rnod{"l"} if($$rnod{"l"}>$maxl);
  $$rnod{"lmax"} = $maxl;
- $$rnod{"l"} = $maxl if($$rnod{"p"} eq "");	# special for root
+ if($$rnod{"p"} eq ""){					# special for root
+  if($rsoft){
+   my $rmax = 0;
+   for(my $i=0;$i<@$rdes;$i++){
+    my $rnxt = $$rdes[$i];
+    $rmax = $$rnxt{"l"} if($$rnxt{"l"}>$rmax);
+   }
+   $$rnod{"l"} = $rmax;
+  }else{
+   $$rnod{"l"} = $maxl;
+  }
+ }
  return $maxl;
 }
 

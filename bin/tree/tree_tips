@@ -12,8 +12,8 @@ use lib "/home/wolf/perl5/lib/perl5";
 use YIW::basic;
 use YIW::tree;
 
-our $Pver = "0.5";
-our $Pdat = "July 10 2017";
+our $Pver = "0.6";
+our $Pdat = "May 24 2021";
 
 our ($Pnam) = ($0 =~ m/([^\/]+)$/);
 our ($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
@@ -31,7 +31,7 @@ $hmax = $MAXVAL;
 $qlea = 10;
 $nmin=2;
 $name = "";
-
+$tabout = 0;
 ############################################################
 #	Global variables
 ############################################################
@@ -65,6 +65,8 @@ Options:
 
 	-s		allow singletons
 
+	-tab		no brackets for header
+
 	-n=x		output file name (default STDOUT)
 EOINPUT
 
@@ -87,6 +89,7 @@ $hmax = $myOptList{"m"} + 0 if($myOptList{"m"}>0);
 $wmod = int $myOptList{"w"} if(int $myOptList{"w"}>0);
 $qlea = $myOptList{"q"} + 0 if($myOptList{"q"}>0);
 $nmin = 1 if(exists $myOptList{"s"});
+$tabout = 1 if(exists $myOptList{"tab"});
 $name = $myOptList{"n"} if($myOptList{"n"} ne "");
 $DEBUG = 1 if(exists $myOptList{"DEBUG"});
 
@@ -133,7 +136,12 @@ if($tnum==0){
  if($name ne ""){
   $fout = sprintf "%s.%d.tre",$name,$tnum;
  }
- write_newick($root,$fout,2,"original");
+ my $pref = "original";
+ $pref = "[".$pref."]" if($tabout==0);
+ my $ltre = write_tree_rec($root,2);
+ open HANZ,">$fout" or die "Can't write \"$fout\"";
+ printf HANZ "%s %s;\n",$pref,$ltre;
+ close HANZ;
 }
 
 ############################################################
@@ -211,7 +219,11 @@ sub cut_tips
    $fout = sprintf "%s.%d.tre",$tnam,$$rnum;
   }
   my $pref = sprintf "%d,%.3f,%.3f,%s",$nlea,$$rnod{"high"},$$rnod{"deep"},$tout;
-  write_newick($rnod,$fout,2,$pref);
+  $pref = "[".$pref."]" if($tabout==0);
+  my $ltre = write_tree_rec($rnod,2);
+  open HANZ,">$fout" or die "Can't write \"$fout\"";
+  printf HANZ "%s %s;\n",$pref,$ltre;
+  close HANZ;
   return;
  }
 

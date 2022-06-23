@@ -1,0 +1,536 @@
+#!/usr/bin/perl5.16
+
+############################################################
+#	Template:	1.5, August 09, 2018
+#	Parent Path:	/home/wolf/bin on frosty
+############################################################
+
+############################################################
+#	System etc
+############################################################
+use lib "/home/wolf/perl5/lib/perl5";
+use YIW::basic;
+use YIW::stat;
+use YIW::tree;
+# uncomment the next line if better randomness is important
+# use Math::Random::MT qw/rand srand/;
+
+our $Pver = "0.2";
+our $Pdat = "July 02, 2021";
+
+our ($Pnam) = ($0 =~ m/([^\/]+)$/);
+our ($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
+
+our $Ppid = $$;	# Process ID
+our $Base = "tmp.$Pnam.$Ppid";
+{
+ my ($host) = ($ENV{"HOSTNAME"} =~ m/^(\w+)/);
+ my $salt = sprintf ".%s.%03d",$host,int(rand(1000));
+ $Base .= $salt;
+}
+our $CMD = "";
+our $DEBUG = 0;
+our $VERBOSE = 1;
+our $DOIT = 1;
+our $EXITCODE = 0;
+
+############################################################
+#	Definitions
+############################################################
+my $Pi =  3.141592653589793;
+
+my $phi0 = 0;
+my $wedge = $Pi*180/180;
+
+my $bwid_def = 0.5;
+my $bwid_mar = 2;
+my $bcol_def = "#808080";
+my $lrad_def = 0;
+my $lcol_def = "#ff0000";
+my $tcol_def = "#000000";
+my $scol_def = "#000000";
+my $sfon_def = 12;
+my $xwid = 8;			# picture area, horizontal size, inches
+my $ywid = 10;			# picture area, vertical size, inches
+my $xmar = 0.5;			# horizontal margin size, inches
+my $ymar = 0.5;			# vertical margin size, inches
+my $popi = 72;			# typographic points per inch, a Universal Constant
+
+my $flag_leaf_all = 0;
+
+my $ftab = "";
+my $aoff = 3;
+
+############################################################
+#	Global variables
+############################################################
+%lea2c = ();
+
+############################################################
+#	Instructions etc
+############################################################
+$Instructions = <<EOINPUT;
+
+$Path/$Pnam $Pver, $Pdat
+
+Use: $Pnam newick [options]
+
+Options:
+
+	-w=x		wedge (0-360; default 180)
+
+	-bw=x		default branch width (default $bwid_def pt)
+
+	-bc=color	default branch color (default \"$bcol_def\")
+
+	-bm=x		marked branch width (default $bwid_mar pt)
+
+	-sf=x		scale bar font size (default $sfon_def pt)
+
+	-lr=x		leaf dot radius (default none)
+
+	-lc=color	default leaf dot color (default \"$lcol_def\")
+
+	-lall		draw all leaves (default marked)
+
+	-t=attrtab	leaf atribute file (default none)
+	
+	-ka=n		attributes start at column n (default $aoff)
+
+	-xs=x		horizontal figure size (default $xwid\")
+
+	-ys=x		vertical figure size (default $ywid\")
+
+	-xm=x		horizontal margin size (default $xmar\")
+
+	-ym=x		vertical margin size (default $ymar\")
+
+Attribute file:
+
+rdrp_v301_189206	Pisuviricota	\#00ffff,3,\#00ffff,16,\#000000
+
+(branch color, leaf dot radius, leaf color, label font size, label font color)
+EOINPUT
+
+############################################################
+#	code start
+############################################################
+
+#---	get and process arguments --------------------------
+YIW::basic::my_args(\@ARGV,0);					# pass 0 to block STDIN
+!@myGlobList and print $Instructions and exit 0;
+
+if(exists $myOptList{"DEBUG"}){ 					# hidden common option
+ $DEBUG = 1;
+ $VERBOSE = 0x7fff;
+}
+$VERBOSE = int $myOptList{"VERB"} if(exists $myOptList{"VERB"});	# hidden common option
+$DOIT = 0 if(exists $myOptList{"IDLE"});				# hidden common option
+$Base = $myOptList{"BASE"} if($myOptList{"BASE"} ne "");		# hidden common option
+if((lc $Base) eq "safe"){						# slow but safe
+ while(1){
+  my $bnum = int(rand(0x7fffffff));
+  $Base = "tmp.$Pnam.$bnum";
+  last if((glob "$Base.*")==0);
+ }
+}
+# examples for using options:
+# $opts = 1 if(exists $myOptList{"q"});				# on/off
+# $opti = int $myOptList{"i"} if(int $myOptList{"i"}>0);	# positive integer
+# $opti = int $myOptList{"i"} if(exists $myOptList{"i"});	# any integer <- string
+# $optr = $myOptList{"x"} + 0 if($myOptList{"x"}>0);		# positive real
+# $optl = $myOptList{"l"} if($myOptList{"l"} ne "");		# non-empty string
+# $optx = "0" if($optx==0);					# to be passed in command line
+$wedge = $myOptList{"w"}*$Pi/180 if($myOptList{"w"}>0 and $myOptList{"w"}<=360);
+$bwid_def = $myOptList{"bw"} + 0 if($myOptList{"bw"}>0);
+$bcol_def = $myOptList{"bc"} if($myOptList{"bc"} ne "");
+$bwid_mar = $myOptList{"bm"} + 0 if($myOptList{"bm"}>0);
+$lrad_def = $myOptList{"lr"} + 0 if(exists $myOptList{"lr"} and $myOptList{"lr"}>=0);
+$lcol_def = $myOptList{"lc"} if($myOptList{"lc"} ne "");
+$sfon_def = $myOptList{"sf"} + 0 if(exists $myOptList{"sf"} and $myOptList{"sf"}>=0);
+$xwid = $myOptList{"xs"} + 0 if($myOptList{"xs"}>0);
+$ywid = $myOptList{"ys"} + 0 if($myOptList{"ys"}>0);
+$xmar = $myOptList{"xm"} + 0 if(exists $myOptList{"xm"} and $myOptList{"xm"}>=0);
+$ymar = $myOptList{"ym"} + 0 if(exists $myOptList{"ym"} and $myOptList{"ym"}>=0);
+$ftab = $myOptList{"t"} if($myOptList{"t"} ne "");
+$flag_leaf_all = 1 if(exists $myOptList{"lall"});
+$aoff = int $myOptList{"ka"} if(int $myOptList{"ka"}>0);
+
+my $ftre = shift @myGlobList;
+
+#---	rest of the code -----------------------------------
+# $CMD = ""; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
+#
+# foreach my $xarg (@myGlobList){
+#  my @xglo = glob $xarg;
+#  foreach my $name (@xglo){
+#  }
+# }
+#
+# print STDERR "$Pnam:\tReading $dlst/$core.$clst\n" if($VERBOSE);
+# open HAND,"<$dlst/$core.$clst" or die "$Pnam:\tCan't read \"$dlst/$core.$clst\"";
+# while(<HAND>){
+#  chomp;
+# }
+# close HAND;
+# printf STDERR "$Pnam:\t\t%s\tgenomes\n",int_commify(scalar @glist) if($VERBOSE);
+#
+# log_this_point($Pnam,"$Pnam\t$Ppid","started") if($VERBOSE>1);
+
+#---	read tree, count leaves ----------------------------
+print STDERR "$Pnam:\tReading $ftre\n";
+my $root = read_newick($ftre,1e-6);
+
+my $nlea = leaf_count($root);
+printf STDERR "$Pnam:\t\t%s\tleaves\n",int_commify($nlea) if($VERBOSE);
+
+#---	coordinates ----------------------------------------
+init_root_coord($root,$phi0,$wedge);
+children_coord($root);
+
+#---	table ----------------------------------------------
+read_attribute_table($ftab);
+
+#---	tree attributes ------------------------------------
+paint_tree($root);
+
+	#print_tree($root,0);
+	#exit;
+
+#---	render tree ----------------------------------------
+render_svg_tree($root);
+
+	#printf "x:\t%.5f\t%.5f\n",$xmin,$xmax;
+	#printf "y:\t%.5f\t%.5f\n",$ymin,$ymax;
+
+#---	clean ----------------------------------------------
+# unlink <$Base.*> unless($DEBUG);
+
+############################################################
+#	leaf_count($rnod)
+############################################################
+sub leaf_count
+{
+ my $rnod = shift;
+
+ my $rdes = $$rnod{"d"};			# descendants
+
+ my $lcnt = 0;
+
+ $lcnt = 1 if($rdes eq "");
+
+ for(my $i=0;$i<@$rdes;$i++){			# scan descendants
+  $lcnt += leaf_count($$rdes[$i]);
+ }
+
+ $$rnod{"nlea"} = $lcnt;
+ 
+ return $lcnt;
+}
+
+############################################################
+#	read_attribute_table($name)
+############################################################
+sub read_attribute_table
+{
+ my $name = shift;
+
+ return if($name eq "");
+
+ print STDERR "$Pnam:\tReading $name\n" if($VERBOSE);
+ open HANDD,"<$name" or die "$Pnam:\tCan't read \"$name\"";
+ while(<HANDD>){
+  chomp;
+  next if(m/^#/);
+  my @data = split/\t/;
+  next if($data[1-1] eq "");
+  $lea2c{$data[1-1]} = $data[$aoff+0-1] if($data[$aoff+0-1] ne "");
+ }
+ close HANDD;
+ printf STDERR "$Pnam:\t\t%s\tnodes\n",int_commify(scalar keys %lea2c) if($VERBOSE);
+}
+
+############################################################
+#	init_root_coord($rnod,$phii,$wwid)
+############################################################
+sub init_root_coord
+{
+ my $rnod = shift;
+ my $phii = shift;
+ my $wwid = shift;
+
+ $$rnod{"x0"} = 0; $$rnod{"y0"} = 0;
+ $$rnod{"x1"} = 0; $$rnod{"y1"} = 0;
+ $$rnod{"phi"} = $phii;
+ $$rnod{"psi"} = $wwid;
+}
+
+############################################################
+#	children_coord($rnod)
+############################################################
+sub children_coord
+{
+ my $rnod = shift;
+
+ my $rdes = $$rnod{"d"};			# descendants
+
+ my $theta = $$rnod{"phi"} + $$rnod{"psi"}/2;	# starting offset
+
+ for(my $i=0;$i<@$rdes;$i++){			# scan descendants
+  my $rden = $$rdes[$i];
+  my $beta = $$rnod{"psi"}*$$rden{"nlea"}/$$rnod{"nlea"};	# subtree wedge
+  my $alpha = $theta - $beta/2;					# subtree axis
+  $$rden{"x0"} = $$rnod{"x1"};
+  $$rden{"y0"} = $$rnod{"y1"};
+  $$rden{"x1"} = $$rden{"x0"} + $$rden{"l"}*cos($alpha);
+  $$rden{"y1"} = $$rden{"y0"} + $$rden{"l"}*sin($alpha);
+  $$rden{"phi"} = $alpha;
+  $$rden{"psi"} = $beta;
+  children_coord($rden);
+  $theta -= $beta;						# new offset
+ }
+}
+
+############################################################
+#	print_tree($rnod,$deep)
+############################################################
+sub print_tree
+{
+ my $rnod = shift;
+ my $deep = shift;
+
+ my $rdes = $$rnod{"d"};			# descendants
+
+ my $nodename = "INT";
+ if($$rnod{"n"} ne ""){ $nodename = $$rnod{"n"};}
+ elsif($$rnod{"b"} ne ""){ $nodename = $$rnod{"b"};}
+ for(my $k=0;$k<$deep;$k++){ print "\t";} printf "N:\t[%s]\n",$nodename;
+ for(my $k=0;$k<$deep;$k++){ print "\t";} printf "n:\t%d\n",$$rnod{"nlea"};
+ for(my $k=0;$k<$deep;$k++){ print "\t";} printf "L:\t%.5f\n",$$rnod{"l"};
+ for(my $k=0;$k<$deep;$k++){ print "\t";} printf "A:\t%.1f\n",$$rnod{"phi"}*180/$Pi;
+ for(my $k=0;$k<$deep;$k++){ print "\t";} printf "W:\t%.1f\n",$$rnod{"psi"}*180/$Pi;
+ for(my $k=0;$k<$deep;$k++){ print "\t";} printf "0:\t%.5f\t%.5f\n",$$rnod{"x0"},$$rnod{"y0"};
+ for(my $k=0;$k<$deep;$k++){ print "\t";} printf "1:\t%.5f\t%.5f\n",$$rnod{"x1"},$$rnod{"y1"};
+ for(my $k=0;$k<$deep;$k++){ print "\t";} printf "C:\t[%s]\n",$$rnod{"color"};
+ for(my $k=0;$k<$deep;$k++){ print "\t";} printf "S:\t[%s]\n",$$rnod{"width"};
+
+ for(my $i=0;$i<@$rdes;$i++){			# scan descendants
+  print_tree($$rdes[$i],$deep+1);
+ }
+}
+
+############################################################
+#	render_svg_tree($rnod)
+############################################################
+sub render_svg_tree
+{
+ my $rnod = shift;
+
+#---	scaling --------------------------------------------
+ my $xmin = 0; my $xmax = 0;
+ my $ymin = 0; my $ymax = 0;
+ box_tree($rnod,\$xmin,\$xmax,\$ymin,\$ymax);
+
+ my $xoff = $xmin;
+ my $yoff = $ymax;
+ my $scal = min($xwid*$popi/($xmax-$xmin),$ywid*$popi/($ymax-$ymin));
+ $xoff -= $xmar*$popi/$scal;
+ $yoff += $ymar*$popi/$scal;
+
+#---	median tree height ---------------------------------
+ my $medh = tree_median_height($rnod);
+
+#---	header ---------------------------------------------
+ printf "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n";
+ printf "<!DOCTYPE svg PUBLIC \"-//W3C//DTD SVG 1.0//EN\" \"http://www.w3.org/TR/2001/REC-SVG-20010904/DTD/svg10.dtd\">\n";
+ printf "<svg width=\"%d\" height=\"%d\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:svg=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\">\n",($xwid+2*$xmar)*$popi,($ywid+2*$ymar)*$popi;
+
+	#printf "<line x1=\"%.2f\" y1=\"%.2f\" x2=\"%.2f\" y2=\"%.2f\" stroke=\"#ff0000\" stroke-width=\"2\" />\n",0,0,$xwid*$popi,$ywid*$popi;
+	#printf "<line x1=\"%.2f\" y1=\"%.2f\" x2=\"%.2f\" y2=\"%.2f\" stroke=\"#00ff00\" stroke-width=\"2\" />\n",0,$ywid*$popi,$xwid*$popi,0;
+ 	#printf "<circle cx=\"%.2f\" cy=\"%.2f\" r=\"%.2f\" fill=\"#ff0000\" />\n",$popi*$xwid/2,$popi*$ywid/2,$popi*min($xwid,$ywid)/5;
+ 	#printf "<circle cx=\"%.2f\" cy=\"%.2f\" r=\"%.2f\" fill=\"#00ff00\" stroke=\"#000000\" stroke-width=\"2\" />\n",$popi*$xwid/2,$popi*$ywid/2,$popi*min($xwid,$ywid)/10;
+ render_svg_branch($rnod,$xoff,$yoff,$scal);
+ render_svg_leaf($rnod,$xoff,$yoff,$scal);
+ render_svg_scalebar($medh,$xoff,$yoff,$scal);
+ 
+#---	footer ---------------------------------------------
+ printf "</svg>\n";
+}
+
+############################################################
+#	box_tree($rnod,$rxmi,$rxma,$rymi,$ryma)
+############################################################
+sub box_tree
+{
+ my $rnod = shift;
+ my $rxmi = shift;
+ my $rxma = shift;
+ my $rymi = shift;
+ my $ryma = shift;
+
+ $$rxmi = $$rnod{"x0"} if($$rnod{"x0"}<$$rxmi);
+ $$rxma = $$rnod{"x0"} if($$rnod{"x0"}>$$rxma);
+ $$rxmi = $$rnod{"x1"} if($$rnod{"x1"}<$$rxmi);
+ $$rxma = $$rnod{"x1"} if($$rnod{"x1"}>$$rxma);
+ $$rymi = $$rnod{"y0"} if($$rnod{"y0"}<$$rymi);
+ $$ryma = $$rnod{"y0"} if($$rnod{"y0"}>$$ryma);
+ $$rymi = $$rnod{"y1"} if($$rnod{"y1"}<$$rymi);
+ $$ryma = $$rnod{"y1"} if($$rnod{"y1"}>$$ryma);
+
+ my $rdes = $$rnod{"d"};			# descendants
+
+ for(my $i=0;$i<@$rdes;$i++){			# scan descendants
+  box_tree($$rdes[$i],$rxmi,$rxma,$rymi,$ryma);
+ }
+}
+
+############################################################
+#	paint_tree($rnod)
+############################################################
+sub paint_tree
+{
+ my $rnod = shift;
+
+ my $rdes = $$rnod{"d"};			# descendants
+ 
+ $$rnod{"color"} = $bcol_def;
+ $$rnod{"width"} = $bwid_def;
+ 
+ if(@$rdes==0){					# leaf
+  $$rnod{"lcolor"} = $lcol_def;
+  $$rnod{"lradius"} = $lrad_def if($flag_leaf_all);
+  return if($lea2c{$$rnod{"n"}} eq "");
+  my ($bcol,$lrad,$lcol,$tsiz,$tcol) = split/,/,$lea2c{$$rnod{"n"}};
+  $$rnod{"color"} = $bcol if($bcol ne "");
+  $$rnod{"width"} = $bwid_mar;
+  $$rnod{"lcolor"} = $lcol if($lcol ne "");
+  $$rnod{"lradius"} = $lrad_def; $$rnod{"lradius"} = $lrad+0 if($lrad>0);
+  $$rnod{"tcolor"} = $tcol_def; $$rnod{"tcolor"} = $tcol if($tcol ne "");
+  $$rnod{"tsize"} = $tsiz + 0 if($tsiz>0);
+  return;
+ }
+
+ my $bcol = "";					# init empty
+
+ for(my $i=0;$i<@$rdes;$i++){			# scan descendants
+  my $rden = $$rdes[$i];
+  paint_tree($rden);
+  $bcol = $$rden{"color"} if($bcol eq "");
+  $bcol = "not a color" if($bcol ne $$rden{"color"});
+ }
+ return if(($bcol eq "" or $bcol eq "not a color" or $bcol eq $bcol_def) and $lea2c{$$rnod{"b"}} eq "");
+ ($bcol) = split/,/,$lea2c{$$rnod{"b"}} if($lea2c{$$rnod{"b"}} ne "");
+ $$rnod{"color"} = $bcol;
+ $$rnod{"width"} = $bwid_mar;
+}
+
+############################################################
+#	tree_median_height($rnod)
+############################################################
+sub tree_median_height
+{
+ my $rnod = shift;
+ 
+ my @data = ();
+ tree_height_scan($rnod,\@data);
+ @data = sort {$a<=>$b} @data;
+ my $medh = array2quant(\@data,scalar(@data),0.5);
+ return $medh;
+}
+
+############################################################
+#	tree_height_scan($rnod,$rdat)
+############################################################
+sub tree_height_scan
+{
+ my $rnod = shift;
+ my $rdat = shift;
+ 
+ my $high = $$rnod{"l"};			# init
+ my $rpar =  $$rnod{"p"};			# parent
+ $high += $$rpar{"high"} if($rpar ne "");		# + parent
+ $$rnod{"high"} = $high;			# this node
+
+ my $rdes = $$rnod{"d"};			# descendants
+
+ for(my $i=0;$i<@$rdes;$i++){			# scan descendants
+  tree_height_scan($$rdes[$i],$rdat);				# continue
+ }
+ 
+ push @$rdat,$high if(@$rdes==0);		# leaf
+}
+
+############################################################
+#	render_svg_branch($rnod,$xoff,$yoff,$scal)
+############################################################
+sub render_svg_branch
+{
+ my $rnod = shift;
+ my $xoff = shift;
+ my $yoff = shift;
+ my $scal = shift;
+
+ printf "<line x1=\"%.2f\" y1=\"%.2f\" x2=\"%.2f\" y2=\"%.2f\" stroke=\"%s\" stroke-width=\"%.2f\" />\n",$scal*($$rnod{"x0"}-$xoff),$scal*($yoff-$$rnod{"y0"}),$scal*($$rnod{"x1"}-$xoff),$scal*($yoff-$$rnod{"y1"}),$$rnod{"color"},$$rnod{"width"};
+
+ my $rdes = $$rnod{"d"};			# descendants
+
+ for(my $i=0;$i<@$rdes;$i++){			# scan descendants
+  render_svg_branch($$rdes[$i],$xoff,$yoff,$scal);
+ }
+}
+
+############################################################
+#	render_svg_leaf($rnod,$xoff,$yoff,$scal)
+############################################################
+sub render_svg_leaf
+{
+ my $rnod = shift;
+ my $xoff = shift;
+ my $yoff = shift;
+ my $scal = shift;
+
+
+ my $rdes = $$rnod{"d"};			# descendants
+
+ for(my $i=0;$i<@$rdes;$i++){			# scan descendants
+  render_svg_leaf($$rdes[$i],$xoff,$yoff,$scal);
+ }
+
+ return if($rdes ne "");
+
+ #printf "<line x1=\"%.2f\" y1=\"%.2f\" x2=\"%.2f\" y2=\"%.2f\" stroke=\"#000000\" stroke-width=\"2\" />\n",$scal*($$rnod{"x0"}-$xoff),$scal*($yoff-$$rnod{"y0"}),$scal*($$rnod{"x1"}-$xoff),$scal*($yoff-$$rnod{"y1"});
+ my $xx = $scal*($$rnod{"x1"}-$xoff);
+ my $yy = $scal*($yoff-$$rnod{"y1"});
+ printf "<circle cx=\"%.2f\" cy=\"%.2f\" r=\"%.1f\" fill=\"%s\" />\n",$xx,$yy,$$rnod{"lradius"},$$rnod{"lcolor"} if($$rnod{"lradius"}>0);
+ if($$rnod{"tsize"}>0){
+  my $xt = $xx + $$rnod{"tsize"}*cos($$rnod{"phi"});
+  my $yt = $yy - $$rnod{"tsize"}*sin($$rnod{"phi"});
+  printf "<text x=\"%.2f\" y=\"%.2f\" transform=\"rotate(%.1f %.2f,%.2f)\" style=\"font-size: %.1f; fill: %s; stroke: none; font-family: monospace; font-weight: bold;\">%s</text>\n",$xt,$yt,-$$rnod{"phi"}*180/$Pi,$xt,$yt,$$rnod{"tsize"},$$rnod{"tcolor"},$$rnod{"n"};
+ }
+}
+
+############################################################
+#	render_svg_scalebar($medh,$xoff,$yoff,$scal)
+############################################################
+sub render_svg_scalebar
+{
+ my $medh = shift;
+ my $xoff = shift;
+ my $yoff = shift;
+ my $scal = shift;
+
+ return if($sfon_def<=0);
+
+ my $lbar = int(log($medh/3)/log(10)+300+0.5) - 300;
+ #$lbar = 10**$lbar;
+
+ my $x1 = $xmar*$popi;
+ my $y1 = $sfon_def + 2 + 2;
+ my $x2 = $x1 + $scal*(10**$lbar);
+ my $y2 = $y1;
+ my $xt = ($x1+$x2)/2;
+ my $yt = $y1 - 2;
+ 
+ printf "<line x1=\"%.2f\" y1=\"%.2f\" x2=\"%.2f\" y2=\"%.2f\" stroke=\"%s\" stroke-width=\"%.2f\" />\n",$x1,$y1,$x2,$y2,$scol_def,$bwid_mar;
+ printf "<text x=\"%.2f\" y=\"%.2f\" text-anchor=\"middle\" style=\"font-size: %.1f; fill: %s; stroke: none; font-family: monospace; font-weight: normal;\">%s</text>\n",$xt,$yt,$sfon_def,$scol_def,10**$lbar;
+}

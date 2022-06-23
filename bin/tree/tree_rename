@@ -1,0 +1,230 @@
+#!/usr/bin/perl5.16
+
+############################################################
+#	Template:	0.3, November 04 2004
+#	Parent Path:	/net/gloin/export/home/wolf/bin/???
+############################################################
+
+############################################################
+#	System etc
+############################################################
+use lib "/home/wolf/perl5/lib/perl5";
+use YIW::basic;
+use YIW::tree;
+
+$Pver = "1.0";
+$Pdat = "May 25, 2016";
+
+($Pnam) = ($0 =~ m/([^\/]+)$/);
+($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
+
+$PID = $$;	# Process ID
+############################################################
+#	Definitions
+############################################################
+$ftab = "";
+$k1 = 1;
+$k2 = 2;
+$delit = "\t";
+$idwrd = 0;
+$delim = "[/|]";
+$flag = 6;
+
+############################################################
+#	Global variables
+############################################################
+%snod;
+
+############################################################
+#	Instructions etc
+############################################################
+$Instructions = <<EOINPUT;
+
+$Pnam $Pver, $Pdat
+
+$Pnam trefile -t= key-table [options]
+
+Reads trees in Newick format; replaces the node names
+
+Options:
+
+	-t=file		key-table file
+
+	-k1=n		use n-th field of the table as key (default $k1)
+
+	-k2=n		use n-th field of the table as replacement (default $k2)
+
+	-s=\"delim\"	delimiters to split line in key table (default \"\\t\")
+
+	-w=n		use n-th word of the leaf as key (default all)
+
+	-x=\"delim\"	delimiters to split the leaf (default \"$delim\")
+
+	-flag=n		additive flag (default 6)
+			2 - include lengths
+			4 - include bootstraps
+			8 - include labels
+EOINPUT
+
+############################################################
+#	code start
+############################################################
+
+#---	get and process arguments --------------------------
+YIW::basic::my_args(\@ARGV,1);					# pass 0 to block STDIN
+!@myGlobList and print $Instructions and exit 0;
+
+# examples for using options:
+# $opts = 1 if(exists $myOptList{"q"});				# on/off
+# $opti = int $myOptList{"i"} if(int $myOptList{"i"}>0);	# positive integer
+# $opti = $myOptList{"x"} + 0 if($myOptList{"x"}>0);		# positive real
+# $optl = $myOptList{"l"} if($myOptList{"l"} ne "");		# non-empty string
+$ftab = $myOptList{"t"} if($myOptList{"t"} ne "");
+$k1 = int $myOptList{"k1"} if(int $myOptList{"k1"}>0);
+$k2 = int $myOptList{"k2"} if(int $myOptList{"k2"}>0);
+$delit = $myOptList{"s"} if($myOptList{"s"} ne "");
+$idwrd = int $myOptList{"w"} if(int $myOptList{"w"}>0);
+$delim = $myOptList{"x"} if($myOptList{"x"} ne "");
+$flag = int $myOptList{"flag"} if(int $myOptList{"flag"}>0);
+
+$ftre = shift @myGlobList;
+
+my %tkey = ();
+#---	read table -----------------------------------------
+print STDERR "$Pnam:\tReading $ftab\n";
+open HAND,"<$ftab" or die "$Pnam:\tCan't read \"$ftab\"";
+while(<HAND>){
+ chomp;
+ my @token = split/$delit/;
+ $tkey{$token[$k1-1]} = $token[$k2-1];
+}
+close HAND;
+printf STDERR "$Pnam:\t\t%s\tkeys\n",int_commify(scalar keys %tkey);
+
+#---	read tree ------------------------------------------
+print STDERR "$Pnam:\tReading $ftre\n";
+$root = read_newick($ftre);
+
+#---	parse tree -----------------------------------------
+my @lint = ();
+my @llea = ();
+list_tree_nodes($root,\@lint,\@llea);
+printf STDERR "$Pnam:\t\t%s\tleaves\n",int_commify(scalar @llea);
+
+#---	replace leaves -------------------------------------
+my $nrep = 0;
+foreach my $rnod (@llea){
+ my $lnam = $$rnod{"n"};
+ $lnam = (split/$delim/,$lnam)[$idwrd-1] if($idwrd>0);
+ if($tkey{$lnam} ne ""){
+  $$rnod{"n"} = $tkey{$lnam};
+  $nrep++;
+ }
+}
+printf STDERR "$Pnam:\t\t%s\treplacements\n",int_commify($nrep);
+
+#---	write tree -----------------------------------------
+write_newick($root,"-",$flag);
+
+############################################################
+#	sort_tree($root);
+############################################################
+sub sort_tree
+{
+ my $rnod = shift;
+ 
+ count_nod_rec($rnod);
+ sort_nod_rec($rnod);
+}
+
+############################################################
+#	count_nod_rec($rnod);
+############################################################
+sub count_nod_rec
+{
+ my $rnod = shift;
+ my $rdes = $$rnod{"d"};
+ 
+ if(@$rdes){				# internal node
+  my $cnt = 0;
+  for(my $i=0;$i<@$rdes;$i++){
+   $cnt += count_nod_rec($$rdes[$i]);
+  }
+  $$rnod{"cnt"} = $cnt;
+ }else{					# terminal node
+  $$rnod{"cnt"} = 1;
+ }
+ return $$rnod{"cnt"};
+}
+
+############################################################
+#	sort_nod_rec($rnod);
+############################################################
+sub sort_nod_rec
+{
+ my $rnod = shift;
+ my $rdes = $$rnod{"d"};
+ 
+ return unless(@$rdes);
+ 
+ @$rdes = sort comp_nod @$rdes;
+ 
+ for(my $i=0;$i<@$rdes;$i++){
+  sort_nod_rec($$rdes[$i]);
+ }
+}
+
+############################################################
+#	comp_nod
+############################################################
+sub comp_nod
+{
+ my $na = $$a{"cnt"};
+ my $nb = $$b{"cnt"};
+ 
+ return $nb<=>$na;
+}
+
+############################################################
+#	aggregate_tree($root,$flag);
+############################################################
+sub aggregate_tree
+{
+ my $rnod = shift;
+ my $flag = shift;
+ my $rdes = $$rnod{"d"};
+ 
+ if(@$rdes>2){
+  my %tmpn = ();
+  my @tmpd = @$rdes;
+  my $rtru = shift @tmpd;
+  @$rdes = ();
+  push @$rdes,$rtru;
+  push @$rdes,\%tmpn;
+  $tmpn{"l"} = $EPSILON;
+  $tmpn{"p"} = $rnod;
+  $tmpn{"d"} = \@tmpd;
+ }
+
+ if(@$rdes>1){
+  for(my $i=0;$i<@$rdes;$i++){
+   aggregate_tree($$rdes[$i],$flag);
+   last if($flag==1);
+  }
+ }
+}
+
+############################################################
+#	add_fake_root($root);
+############################################################
+sub add_fake_root
+{
+ my $rnod = shift;
+ my $rdes = $$rnod{"d"};
+ 
+ my %tmpn = ();
+ $tmpn{"l"} = $EPSILON;
+ $tmpn{"p"} = $rnod;
+ $tmpn{"n"} = "_root";
+ push @$rdes,\%tmpn;
+}

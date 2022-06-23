@@ -60,6 +60,7 @@ my_args(@ARGV);
 !@myGlobList and print $Instructions and exit 0;
 
 $idwrd = int $myOptList{"w"} if(exists $myOptList{"w"});
+$flst = $myOptList{"t"} if($myOptList{"t"} ne "");	# backup option
 $flst = $myOptList{"l"} if($myOptList{"l"} ne "");
 $flagp = 0 if(exists $myOptList{"whole"});
 
@@ -358,7 +359,7 @@ sub read_tree
  $line =~ s/^[^(]*//;	# clean leader
  $line =~ s/;.*$//;	# clean trailer
  $line =~ tr/ //d;	# clean spaces
- $line =~ s/\):[0-9.eE+-]+$/\)/;	# clean terminal branch length
+ $line =~ s/\)[^)]+$/\)/;		# clean terminal labels and branch length #@@# NB: temporary solution!
 
  my %tmp = ();
  my $rxxt = \%tmp;

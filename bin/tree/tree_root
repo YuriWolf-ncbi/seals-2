@@ -14,8 +14,8 @@ use YIW::tree;
 # uncomment the next line if better randomness is important
 # use Math::Random::MT qw/rand srand/;
 
-our $Pver = "0.2";
-our $Pdat = "December 11 2018";
+our $Pver = "0.4";
+our $Pdat = "November 12 2021";
 
 our ($Pnam) = ($0 =~ m/([^\/]+)$/);
 our ($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
@@ -36,7 +36,11 @@ our $EXITCODE = 0;
 ############################################################
 #	Definitions
 ############################################################
+my $EPSILON = 1e-9;
 my $rmod = 0;
+my $wmod = 2+4;
+my $rlab = "";
+my $mreg = 0;
 
 ############################################################
 #	Global variables
@@ -53,7 +57,16 @@ Use: $Pnam treefile [options]
 
 Options:
 
-	-m=n		0 - best root, 1 - all good roots, 2 - all roots
+	-m=n		0 - best root
+			1 - all good roots
+			2 - all roots
+			3 - root at specified node
+
+	-lab=xxx	root at this node (Phylip style) or leaf
+
+	-reg		label is a regexp
+
+	-noboot		no bootstraps in output
 EOINPUT
 
 ############################################################
@@ -86,6 +99,9 @@ if((lc $Base) eq "safe"){						# slow but safe
 # $optl = $myOptList{"l"} if($myOptList{"l"} ne "");		# non-empty string
 # $optx = "0" if($optx==0);					# to be passed in command line
 $rmod = int $myOptList{"m"} if(exists $myOptList{"m"});
+$wmod = 2 if(exists $myOptList{"noboot"});
+$rlab = $myOptList{"lab"} if($myOptList{"lab"} ne "");
+$mreg = 1 if(exists $myOptList{"1"});
 
 my $ftre = shift @myGlobList;
 
@@ -110,7 +126,8 @@ my $ftre = shift @myGlobList;
 
 #---	read tree ------------------------------------------
 print STDERR "$Pnam:\tReading $ftre\n" if($VERBOSE);
-my $root = read_newick($ftre);
+my $root = read_newick($ftre,$EPSILON);
+label_tree($root,0);		# Phylip-style labels
 
 #---	list nodes -----------------------------------------
 my @lnod = ();
@@ -120,7 +137,7 @@ printf STDERR "$Pnam:\t\t%s\tleaves\n",int_commify(scalar @llea) if($VERBOSE);
 
 #---	check if too small ---------------------------------
 if(@llea<3){
- write_newick($root,"-",2+4,"");
+ write_newick($root,"-",$wmod,"");
  exit;
 }
 
@@ -242,15 +259,30 @@ foreach my $rbra (@lbra){
 my $done = 0;
 foreach my $rbra (@lbra){
  last if($rmod==1 and $$rbra{"root"}==0 and $done>0);
- my $linx = write_tree_bb_rec($$rbra{"x"},$$rbra{"y"},2+4);
+ if($rmod==3){								# root as specified
+  my $rnox = $$rbra{"x"};
+  my $labx = $$rnox{"n"};
+  $labx = $$rnox{"lab"} if($labx eq "");
+  my $hitx = $labx eq $rlab;
+  $hitx = ($labx =~ m/$rlab/);
+  my $rnoy = $$rbra{"y"};
+  my $laby = $$rnoy{"n"};
+  $laby = $$rnoy{"lab"} if($laby eq "");
+  my $hity = $laby eq $rlab;
+  $hity = ($laby =~ m/$rlab/);
+  next unless($hitx or $hity);
+ }
+ my $linx = write_tree_bb_rec($$rbra{"x"},$$rbra{"y"},$wmod);
  $linx .= $$rbra{"b"} if($linx=~m/\)$/);
- my $liny = write_tree_bb_rec($$rbra{"y"},$$rbra{"x"},2+4);
+ my $liny = write_tree_bb_rec($$rbra{"y"},$$rbra{"x"},$wmod);
  $liny .= $$rbra{"b"} if($liny=~m/\)$/);
  my $hdif = $$rbra{"xh"} - $$rbra{"yh"};
  my $lx = ($$rbra{"l"}-$hdif)/2;
  my $ly = ($$rbra{"l"}+$hdif)/2;
+ if($lx<0){ $lx = $EPSILON; $ly = $$rbra{"l"} - $EPSILON;}
+ if($ly<0){ $ly = $EPSILON; $lx = $$rbra{"l"} - $EPSILON;}
  printf "(%s:%.5f,%s:%.5f);\n",$linx,$lx,$liny,$ly;
- last if($rmod==0);
+ last if($rmod==0 or $rmod==3);
  $done = 1;
 }
 
