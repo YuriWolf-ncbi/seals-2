@@ -13,8 +13,8 @@ use YIW::basic;
 # uncomment the next line if better randomness is important
 # use Math::Random::MT qw/rand srand/;
 
-our $Pver = "0.2";
-our $Pdat = "March 28 2021";
+our $Pver = "0.1";
+our $Pdat = "February 19 2021";
 
 our ($Pnam) = ($0 =~ m/([^\/]+)$/);
 our ($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
@@ -35,22 +35,15 @@ our $EXITCODE = 0;
 ############################################################
 #	Definitions
 ############################################################
-my $icom = 0;
-my $ldelim = "\t";
-my $k1 = 1;
-my $k2 = 2;
-my $kw = 0;
-my $kx = 0;
-my $frow = "";
-my $fcol = "";
+$nr = 1;
+$nc = 1;
+$icom = 1;
+$ldelim = "\t";
+$jdelim = "\t";
 
 ############################################################
 #	Global variables
 ############################################################
-my %matr = ();
-my %lst2 = ();
-my @lrow = ();
-my @lcol = ();
 
 ############################################################
 #	Instructions etc
@@ -61,27 +54,20 @@ $Path/$Pnam $Pver, $Pdat
 
 Use: $Pnam name [options]
 
-Reads the table, aggregates specified keys
+Reads table with header row(s) and column(s); decomposes the table into
+header / header / value triplets
 
 Options:
 
-	-k1=n		use n-th field as the row key (default $k1)
+	-r=n		first n rows are header (default $nr)
 
-	-k2=n		use n-th field as the column key (default $k2)
+	-c=n		first n columns are header (default $nc)
 
-	-kw=n		use n-th field as the weight (default none)
-
-	-kx=n		use n-th field as the entry (default none)
-
-	-f1=name	read list of row keys from file (default sorted)
-
-	-f2=name	read list of column keys from file (default sorted)
-
-	-comm=n		lines starting with \"\#\" (default - pass through)
-			1 - skip
-			2 - treat as normal
+	-nocomm		process lines starting with \"\#\" (default skip)
 
 	-s=\"delim\"	delimiters to split line (default \"\\t\")
+
+	-j=\"delim\"	delimiter to join line (default \"\\t\")
 EOINPUT
 
 ############################################################
@@ -99,7 +85,13 @@ if(exists $myOptList{"DEBUG"}){ 					# hidden common option
 $VERBOSE = int $myOptList{"VERB"} if(exists $myOptList{"VERB"});	# hidden common option
 $DOIT = 0 if(exists $myOptList{"IDLE"});				# hidden common option
 $Base = $myOptList{"BASE"} if($myOptList{"BASE"} ne "");		# hidden common option
-
+if((lc $Base) eq "safe"){						# slow but safe
+ while(1){
+  my $bnum = int(rand(0x7fffffff));
+  $Base = "tmp.$Pnam.$bnum";
+  last if((glob "$Base.*")==0);
+ }
+}
 # examples for using options:
 # $opts = 1 if(exists $myOptList{"q"});				# on/off
 # $opti = int $myOptList{"i"} if(int $myOptList{"i"}>0);	# positive integer
@@ -107,16 +99,13 @@ $Base = $myOptList{"BASE"} if($myOptList{"BASE"} ne "");		# hidden common option
 # $optr = $myOptList{"x"} + 0 if($myOptList{"x"}>0);		# positive real
 # $optl = $myOptList{"l"} if($myOptList{"l"} ne "");		# non-empty string
 # $optx = "0" if($optx==0);					# to be passed in command line
-$icom = int $myOptList{"comm"} if(int $myOptList{"comm"}>0);
+$nr = int $myOptList{"r"} if(exists $myOptList{"r"});
+$nc = int $myOptList{"c"} if(exists $myOptList{"c"});
+$icomm = 0 if(exists $myOptList{"nocomm"});
 $ldelim = $myOptList{"s"} if($myOptList{"s"} ne "");
-$k1 = int $myOptList{"k1"} if(int $myOptList{"k1"}>0);
-$k2 = int $myOptList{"k2"} if(int $myOptList{"k2"}>0);
-$kw = int $myOptList{"kw"} if(int $myOptList{"kw"}>0);
-$kx = int $myOptList{"kx"} if(int $myOptList{"kx"}>0);
-$frow = $myOptList{"f1"} if($myOptList{"f1"} ne "");
-$fcol = $myOptList{"f2"} if($myOptList{"f2"} ne "");
+$jdelim = $myOptList{"j"} if($myOptList{"j"} ne "");
 
-# my $name = shift @myGlobList;
+my $name = shift @myGlobList;
 
 #---	rest of the code -----------------------------------
 # $CMD = ""; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
@@ -137,76 +126,33 @@ $fcol = $myOptList{"f2"} if($myOptList{"f2"} ne "");
 #
 # log_this_point($Pnam,"$Pnam\t$Ppid","started") if($VERBOSE>1);
 
-#---	read the source table ------------------------------
-foreach my $xarg (@myGlobList){
- my @xglo = glob $xarg;
- foreach my $name (@xglo){
-  print STDERR "$Pnam:\tReading $name\n" if($VERBOSE>1);
-  open HAND,"<$name" or die "$Pnam:\tCan't read \"$name\"";
-  while(<HAND>){
-   chomp;
-   if(m/^\#/){ print "$_\n" if($icom==0); next if($icom<2);}
-   my @data = split/$ldelim/;
-   my $v1 = $data[$k1-1];
-   my $v2 = $data[$k2-1];
-   my $wt = 1; $wt = $data[$kw-1] if($kw>0);
-   my $xx = ""; $xx = $data[$kx-1] if($kx>0);
-   unless($matr{$v1}){ my %tmp = (); $matr{$v1} = \%tmp;}
-   my $rmat = $matr{$v1};
-   if($kx>0){ $$rmat{$v2} = $xx;}
-   else{ $$rmat{$v2} += $wt;}
-   $lst2{$v2} = 1;
+my @htop = ();
+my $cntl = 0;
+open HAND,"<$name" or die "$Pnam:\tCan't read \"$name\"";
+while(<HAND>){
+ chomp;
+ next if($icomm and m/^#/);
+ my @dat = split/$ldelim/;
+  	#printf "# row %d\t%d\tcolumns\n",$cntl,(scalar @dat);
+ if($cntl<$nr){
+  	#printf "# HEADER\n",$cntl,(scalar @dat);
+  for(my $i=$nc;$i<@dat;$i++){ $htop[$i] .= $jdelim if($htop[$i] ne ""); $htop[$i] .= $dat[$i];}
+ }else{
+  	#printf "# BODY\n",$cntl,(scalar @dat);
+  for(my $i=$nc;$i<@dat;$i++){
+   if($nc>0){
+    my $hc = join($jdelim,@dat[0..($nc-1)]);
+    printf "%s%s",$hc,$jdelim;
+   }
+   if($nr>0){
+    printf "%s%s",$htop[$i],$jdelim;
+   }
+   printf "%s\n",$dat[$i];
   }
-  close HAND;
  }
+ $cntl++;
 }
-printf STDERR "$Pnam:\t\t%s\trows\n",int_commify(scalar keys %matr) if($VERBOSE>1);
-printf STDERR "$Pnam:\t\t%s\tcolumns\n",int_commify(scalar keys %lst2) if($VERBOSE>1);
-
-#---	read the row list ----------------------------------
-if($frow ne ""){
- print STDERR "$Pnam:\tReading $frow\n" if($VERBOSE>1);
- open HAND,"<$frow" or die "$Pnam:\tCan't read \"$frow\"";
- while(<HAND>){
-  chomp;
-  my ($xx) = split/\s+/;
-  push @lrow,$xx;
- }
- close HAND;
- printf STDERR "$Pnam:\t\t%s\trows\n",int_commify(scalar @lrow) if($VERBOSE>1);
-}else{
- @lrow = sort keys %matr;
-}
-
-#---	read the column list -------------------------------
-if($fcol ne ""){
- print STDERR "$Pnam:\tReading $fcol\n" if($VERBOSE>1);
- open HAND,"<$fcol" or die "$Pnam:\tCan't read \"$fcol\"";
- while(<HAND>){
-  chomp;
-  my ($xx) = split/\s+/;
-  push @lcol,$xx;
- }
- close HAND;
- printf STDERR "$Pnam:\t\t%s\tcolumns\n",int_commify(scalar @lcol) if($VERBOSE>1);
-}else{
- @lcol = sort keys %lst2;
-}
-
-#---	output ---------------------------------------------
-foreach my $v2 (@lcol){ printf "\t%s",$v2;}
-print "\n";
-
-foreach my $v1 (@lrow){
- printf "%s",$v1;
- my $rmat = $matr{$v1};
- foreach my $v2 (@lcol){
-  if($kw>0){ printf "\t%.4e",$$rmat{$v2};}
-  elsif($kx>0){ printf "\t%s",$$rmat{$v2};}
-  else{ printf "\t%d",$$rmat{$v2};}
- }
- print "\n";
-}
+close HAND;
 
 #---	clean ----------------------------------------------
 # unlink <$Base.*> unless($DEBUG);

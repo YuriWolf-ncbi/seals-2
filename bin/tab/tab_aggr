@@ -30,7 +30,7 @@ $moda = 1;
 ############################################################
 #	Global variables
 ############################################################
-%ag01; %ag02; %ag04;
+%ag01; %ag02; %ag04; @aggl;
 
 ############################################################
 #	Instructions etc
@@ -93,6 +93,7 @@ foreach my $fmas (@myGlobList){
   my $hk = $data[$k1-1];
   my $hv = $data[$k2-1];
   $ag01{$hk}++;
+  push @aggl,$hk if($ag01{$hk}==1);
   $ag02{$hk} += $hv if($moda&0x02);
   if($moda&0x04){
    $ag04{$hk} .= $cdelim if($ag04{$hk} ne "");
@@ -103,7 +104,7 @@ foreach my $fmas (@myGlobList){
 }
 
 #---	output ---------------------------------------------
-foreach my $hk (keys %ag01){
+foreach my $hk (@aggl){
  print "$hk";
  printf "%s%s",$jdelim,$ag01{$hk} if($moda&0x01);
  printf "%s%s",$jdelim,$ag02{$hk} if($moda&0x02);
