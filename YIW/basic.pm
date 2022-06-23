@@ -27,6 +27,7 @@ return 1;
 #	maxr($rarr) minr($rarr)
 #	log_this_point($pnam,$ppid,$mess)
 #	YIW::basic::my_args($flag,@ARGV)
+#	YIW::basic::tempdir_make_safe($dtag)
 ############################################################
 
 ############################################################
@@ -125,4 +126,28 @@ sub my_args
   }
  }
  push @myGlobList,"-" if($flag and not -t STDIN);
+}
+
+############################################################
+#	tempdir_make_safe($dtag)
+############################################################
+# makes directory d.dtag.nnnnn/
+sub tempdir_make_safe
+{
+ my $dtag = shift;
+ if($dtag eq ""){
+  ($dtag) = ($0 =~ m/([^\/]+)$/);
+ }
+ 
+ my $dd = "";
+ 
+ while(1){
+  my $r1 = 1 + int(rand(0x7ffffffd));
+  $dd = join ".",("d",$dtag,$r1);
+  unless(-e $dd){
+   mkdir $dd or die "Can't make \"$dd\"";
+   last;
+  }
+ }
+ return $dd;
 }

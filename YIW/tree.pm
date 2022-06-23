@@ -10,24 +10,24 @@ BEGIN {
 # Inherit from Exporter to export functions and variables
 	our @ISA = qw(Exporter);
 # Functions and variables which are exported by default
-	our @EXPORT = qw(read_newick process_newick parse_newick write_newick clean_tree label_tree copy_tree list_tree_nodes process_treenames tree_leaf_sets tree_collect_tbl tree_ultra tree_rescale tree_height tree_weight);
+	our @EXPORT = qw(read_newick process_newick parse_newick write_newick write_tree_rec clean_tree label_tree copy_tree list_tree_nodes process_treenames tree_leaf_sets tree_collect_tbl tree_ultra tree_rescale tree_height tree_weight tree_hortonorder tree_ladderize tree_prune trace_tagged_nodes search_tagged_root);
 # Functions and variables which can be optionally exported
 	our @EXPORT_OK = qw();
 }
 
 my $ndelim = "[/|\]";
-my $EPSILON = 1e-6;
 
 return 1;
 
 ############################################################
-#	read_newick($ftre)
-#		assumes single Newick tree in a file; allocates space; returns pointer to the root
-#	process_newick($rnod,$line)
-#		assumes single Newick line; allocates space; builds from $rnod
-#	parse_newick($rnod,$line)
-#		assumes clean Newick line; allocates space; builds from $rnod
+#	read_newick($ftre,$EPSILON)
+#		assumes single Newick tree in a file; allocates space; returns pointer to the root; makes ultra-short branches random ~$EPSILON
+#	process_newick($rnod,$line,$EPSILON)
+#		assumes single Newick line; allocates space; builds from $rnod; makes ultra-short branches random ~$EPSILON
+#	parse_newick($rnod,$line,$EPSILON)
+#		assumes clean Newick line; allocates space; builds from $rnod; makes ultra-short branches random ~$EPSILON
 #	write_newick($root,$name,$flag,$pref)
+#	write_tree_rec($root,$flag);
 #	clean_tree($rnod,$tag1,tag2,...)
 #	label_tree($rnod,$modl)
 #		to "lab"
@@ -47,6 +47,17 @@ return 1;
 #		to "high"
 #	tree_weight($rnod,$wsum,$wadd)
 #		to "high", "tbl", "add", "wt"
+#	tree_hortonorder($rnod)
+#		to "hord"
+#	tree_ladderize($rnod)
+#		to "nlea"
+#	tree_prune($root,$xtag)
+#		starts with $rnod{$xtag}>=0 at leaves; propagates $xtag through the tree; changes root; prunes untagged clades
+#		returns root
+#	trace_tagged_nodes($rnod,$xtag)
+#		starts with $rnod{$xtag}>=0 at leaves; propagates $xtag through the tree
+#	search_tagged_root($rnod,$xtag)
+#		assumes fully tagged tree; returns the root node for all tagged leaves
 ############################################################
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -61,12 +72,13 @@ return 1;
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ############################################################
-#	read_newick($name)
+#	read_newick($name,$EPSILON)
 #	August 12 2015
 ############################################################
 sub read_newick
 {
  my $name = shift;
+ my $EPSILON = shift;
  my $line = "";
  
  open HAND,"<$name" or die "Can't read \"$name\"";
@@ -77,18 +89,19 @@ sub read_newick
  close HAND;
  
  my %tmp = ();
- process_newick(\%tmp,$line);
+ process_newick(\%tmp,$line,$EPSILON);
  return \%tmp;
 }
 
 ############################################################
-#	process_newick($rnod,$line)
-#	April 15 2016
+#	process_newick($rnod,$line,$EPSILON)
+#	February 19 2020
 ############################################################
 sub process_newick
 {
  my $rnod = shift;
  my $line = shift;
+ my $EPSILON = shift;
 
  my ($head) = ($line=~m/^(\[.+\])/);	# get header
  $$rnod{"head"} = $head if($head ne "");
@@ -97,19 +110,22 @@ sub process_newick
  $line =~ s/^[^(]*// if($line=~m/\(/);	# clean leader
  $line =~ s/;.*$//;			# clean trailer
  $line =~ tr/ //d;			# clean spaces
- $line =~ s/\):[0-9.eE+-]+$/\)/;	# clean terminal branch length
+ #$line =~ s/\):[0-9.eE+-]+$/\)/;	# clean terminal branch length
+ $line =~ s/\)[^)]+$/\)/;		# clean terminal labels and branch length #@@# NB: temporary solution!
 
- parse_newick($rnod,$line);
+ parse_newick($rnod,$line,$EPSILON);
+ $$rnod{"p"} = "";
 }
 
 ############################################################
-#	parse_newick($rnod,$line)
+#	parse_newick($rnod,$line,$EPSILON)
 #	August 12 2015
 ############################################################
 sub parse_newick
 {
  my $rnod = shift;
  my $ilin = shift;
+ my $EPSILON = shift;
  
  my $line = unwrap_line($ilin);		# strip (...)
  my @desc = split_line($line);		# parse descendants
@@ -146,7 +162,7 @@ sub parse_newick
   $tmpn{"b"} = $boot;				# record bootstrap or label
   $tmpn{"i"} = $iadd;				# record additional info
   $tmpn{"p"} = $rnod;				# record parent node - just in case
-  parse_newick(\%tmpn,$tren);			# go further down the tree
+  parse_newick(\%tmpn,$tren,$EPSILON);		# go further down the tree
  }
 }
 
@@ -208,7 +224,6 @@ sub find_balance
 #	0x02	- include lengths
 #	0x04	- include bootstraps
 #	0x08	- include labels
-#	returns prepared line (without ";")
 ############################################################
 sub write_newick
 {
@@ -227,6 +242,10 @@ sub write_newick
 
 ############################################################
 #	write_tree_rec($root,$flag)
+#	0x02	- include lengths
+#	0x04	- include bootstraps
+#	0x08	- include labels
+#	returns prepared line (without ";")
 ############################################################
 sub write_tree_rec
 {
@@ -636,3 +655,195 @@ sub tree_collect_wt
  }
 }
 
+############################################################
+#	tree_hortonorder($rnod)
+############################################################
+sub tree_hortonorder
+{
+ my $rnod = shift;
+
+ 
+ my $rdes = $$rnod{"d"};			# descendants
+ 
+ if(@$rdes==0){					# leaf
+  $$rnod{"hord"} = 1;
+  return;
+ }
+
+ my @hode = ();
+ 
+ for(my $i=0;$i<@$rdes;$i++){			# scan descendants
+  my $rden = $$rdes[$i];
+  tree_hortonorder($rden);					# continue
+  $hode[$$rden{"hord"}]++;
+ }
+
+ my $horc = @hode;
+ $horc-- if($hode[$horc-1]<2);
+ $$rnod{"hord"} = $horc;
+}
+
+############################################################
+#	tree_ladderize($rnod)
+############################################################
+sub tree_ladderize
+{
+ my $rnod = shift;
+
+ my $rdes = $$rnod{"d"};			# descendants
+ 
+ if(@$rdes==0){					# leaf
+  $$rnod{"nlea"} = 1;
+  return $$rnod{"nlea"};
+ }
+
+ my $nlea = 0;
+ for(my $i=0;$i<@$rdes;$i++){			# scan descendants
+  my $rden = $$rdes[$i];
+  my $nn = tree_ladderize($rden);
+  $nlea += $nn;
+ }
+
+ @$rdes = sort sort_nodes_nlea @$rdes;
+
+ $$rnod{"nlea"} = $nlea;
+ return $$rnod{"nlea"};
+}
+
+############################################################
+#	sort_nodes_nlea()
+############################################################
+sub sort_nodes_nlea
+{
+ my $rnoa = $a;
+ my $rnob = $b;
+ my $nlea = $$rnoa{"nlea"};
+ my $nleb = $$rnob{"nlea"};
+ return $nleb<=>$nlea;
+}
+
+############################################################
+#	tree_prune($root,$xtag)
+############################################################
+sub tree_prune
+{
+ my $root = shift;
+ my $xtag = shift;
+
+ trace_tagged_nodes($root,$xtag);
+
+ prune_untagged_nodes($root,$xtag);
+
+ my $rnew = shortcut_single_nodes($root);
+
+ return $rnew;
+}
+
+############################################################
+#	trace_tagged_nodes($rnod,$xtag)
+############################################################
+sub trace_tagged_nodes
+{
+ my $rnod = shift;
+ my $xtag = shift;
+
+ my $rdes = $$rnod{"d"};			# descendants
+ 
+ if(@$rdes==0){					# leaf
+  return $$rnod{$xtag};
+ }
+
+ $$rnod{$xtag} = 0;
+
+ for(my $i=0;$i<@$rdes;$i++){			# scan descendants
+  my $rden = $$rdes[$i];
+  my $cc = trace_tagged_nodes($rden,$xtag);
+  $$rnod{$xtag} = 1 if($cc);
+ }
+ return $$rnod{$xtag};
+}
+
+############################################################
+#	prune_untagged_nodes($rnod,$xtag)
+############################################################
+sub prune_untagged_nodes
+{
+ my $rnod = shift;
+ my $xtag = shift;
+
+ my $rdes = $$rnod{"d"};			# descendants
+ 
+ if(@$rdes==0){					# leaf
+  return;
+ }
+
+ my @lnod = ();
+
+ for(my $i=0;$i<@$rdes;$i++){			# scan descendants
+  my $rden = $$rdes[$i];
+  if($$rden{$xtag}){					# descendant is on current track
+   push @lnod,$rden;
+   prune_untagged_nodes($rden,$xtag);
+  }
+ }
+ @$rdes = @lnod;
+}
+
+############################################################
+#	shortcut_single_nodes($rnod)
+############################################################
+sub shortcut_single_nodes
+{
+ my $rnod = shift;
+
+ my $rdes = $$rnod{"d"};			# descendants
+ my $ndes = @$rdes;
+
+ if(@$rdes==0){					# leaf
+  return $rnod;						# return self
+ }
+
+ if(@$rdes==1){					# single_link
+  my $rden = $$rdes[0];
+  my $rnew = shortcut_single_nodes($rden);
+  $$rnew{"l"} += $$rnod{"l"};				# donate length
+  $$rnew{"p"} = $$rnod{"p"};				# shortcut to parent
+  return $rnew;						# return descendant
+ }
+
+ for(my $i=0;$i<@$rdes;$i++){			# scan descendants if >=2
+  my $rden = $$rdes[$i];
+  my $rnew = shortcut_single_nodes($rden);
+  $$rdes[$i] = $rnew;				# update descendant
+ }
+
+ return $rnod;						# return self
+}
+
+############################################################
+#	search_tagged_root($rnod,$xtag)
+############################################################
+sub search_tagged_root
+{
+ my $rnod = shift;
+ my $xtag = shift;
+
+ my $rdes = $$rnod{"d"};			# descendants
+ 
+ if(@$rdes==0){					# leaf
+  return $rnod;						# the only live leaf
+ }
+
+ my $ncur = 0;
+ for(my $i=0;$i<@$rdes;$i++){			# scan descendants
+  my $rden = $$rdes[$i];
+  $ncur++ if($$rden{$xtag});
+ }
+ 
+ return $rnod if($ncur>1);			# self is root
+
+ for(my $i=0;$i<@$rdes;$i++){			# scan descendants
+  my $rden = $$rdes[$i];
+  return search_tagged_root($rden,$xtag) if($$rden{$xtag});
+ }
+}

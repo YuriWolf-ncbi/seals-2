@@ -460,7 +460,7 @@ sub blast_expand_footptint
   my ($ph2) = ($path =~ m/(\d+)$/);
   push @frh,($ph1."-".$ph2);
  }
- 
+
 #---	close gaps relative to query -----------------------
  for(my $i=0;$i<@frq;$i++){
   my ($pq1,$pq2) = split/-/,$frq[$i];

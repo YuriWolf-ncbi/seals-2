@@ -2,7 +2,9 @@ package YIW::stat;
 
 use strict;
 use YIW::basic;
+use feature 'state';
 #use warnings;
+use Math::Random::MT qw/rand srand/;
 
 BEGIN {
 	require Exporter;
@@ -11,7 +13,7 @@ BEGIN {
 # Inherit from Exporter to export functions and variables
 	our @ISA = qw(Exporter);
 # Functions and variables which are exported by default
-	our @EXPORT = qw(permute_array array2quant corr_pearson array2rank array2var array2entropy find_index density_norm_s density_norm kernel_smooth_xy);
+	our @EXPORT = qw(permute_array array2quant corr_pearson array2rank array2var array2entropy find_index density_norm_s density_norm kernel_smooth_xy window_smooth_xy rand_normal rand_exp rand_poisson);
 # Functions and variables which can be optionally exported
 	our @EXPORT_OK = qw();
 }
@@ -25,7 +27,12 @@ BEGIN {
 #	array2entropy($rarr,$ndat)
 #	find_index($rpro,$xxxx)
 #	density_norm_s(x)
+#	density_norm(x,m,s)
 #	kernel_smooth_xy($rarx,$rary,$roux,$rouy,$nout,$band)
+#	window_smooth_xy($rarx,$rary,$roux,$rouy,$step,$wind,$post)
+#	rand_normal($mm,$ss)
+#	rand_exp($ll)
+#	rand_poisson($ll)
 ############################################################
 
 my $Pi =  3.141592653589793;
@@ -36,7 +43,7 @@ return 1;
 ############################################################
 #	permute_array($rarr)
 ############################################################
-# "proper" permutation accorting to Knuth
+# "proper" permutation according to Knuth
 sub permute_array
 {
  my $rarr = shift;
@@ -219,7 +226,7 @@ sub density_norm_s
 }
 
 ############################################################
-#	density_norm(x)
+#	density_norm(x,m,s)
 ############################################################
 # density for Normal(x,m,s)
 sub density_norm
@@ -294,4 +301,158 @@ sub find_kernel_smooth_xy
  }
  return -2e300 if($sumw<=0);
  return $sumy/$sumw;
+}
+
+############################################################
+#	window_smooth_xy($rarx,$rary,$roux,$rouy,$step,$wind,$post)
+############################################################
+# smooths $rary over $rarx using a sliding window of length $wind
+# centered window by default; preceding window if $post>0
+# writes smoothed data in ($roux,$rouy)
+# makes points starting at >=$xmin, ending at $xmax with $step ($step<=1 -> $step=1)
+# returns number of points
+# $wind = ($xmax-$xmin)/20 if $wind==0
+sub window_smooth_xy
+{
+ my $rarx = shift;
+ my $rary = shift;
+ my $roux = shift;
+ my $rouy = shift;
+ my $step = shift;
+ my $wind = shift;
+ my $post = shift;
+
+ my $xmin = minr($rarx);
+ my $xmax = maxr($rarx);
+ $wind = ($xmax-$xmin)/20 if($wind<=0);			# if not specified
+ #$wind = $xmax - $xmin if($wind>$xmax-$xmin);		# if overspecified
+ 
+ $step = 1 if($step<=0);				# need a positive $step
+
+ my $xlow = $xmax - $step*int(($xmax-$xmin)/$step);	# start position
+
+ 	#printf "xmin\t%.1f\n",$xmin;
+ 	#printf "xmax\t%.1f\n",$xmax;
+ 	#printf "step\t%.1f\n",$step;
+ 	#printf "xlow\t%.1f\n",$xlow;
+ 	#printf "wind\t%.1f\n",$wind;
+ 	#exit;
+ 
+ for(my $xpos = $xlow;$xpos<=$xmax;$xpos+=$step){
+  my $icur = find_index($rarx,$xpos);
+  my $xbeg = $xpos - $wind/2; $xbeg = $xpos - $wind if($post>0);
+  my $xend = $xpos + $wind/2; $xend = $xpos if($post>0);
+ 	#printf "icur\t%d\n",$icur;
+ 	#printf "xpos\t%.1f\n",$xpos;
+ 	#printf "xbeg\t%.1f\n",$xbeg;
+ 	#printf "xend\t%.1f\n",$xend;
+  my $sumy = 0; my $npts = 0;
+  for(my $i=$icur;$i>=0;$i--){
+   if($$rarx[$i]>=$xbeg){
+ 	#printf "\t%d\t%.1f\t%.1f\n",$i,$$rarx[$i],$$rary[$i];
+    $sumy += $$rary[$i];
+    $npts++;
+   }else{
+    last;
+   }
+  }
+  for(my $i=$icur+1;$i<@$rarx;$i++){
+   if($$rarx[$i]<=$xend){
+ 	#printf "\t%d\t%.1f\t%.1f\n",$i,$$rarx[$i],$$rary[$i];
+    $sumy += $$rary[$i];
+    $npts++;
+   }else{
+    last;
+   }
+  }
+ 	#printf "\t%.1f\t%d\n",$sumy,$npts;
+  $sumy /= $npts if($npts>0);
+  push @$roux,$xpos;
+  push @$rouy,$sumy;
+ }
+
+ return scalar @$roux;
+}
+
+############################################################
+#	rand_normal($mm,$ss)
+############################################################
+# randomly distributed Normal(mm,ss)
+# https://en.wikipedia.org/wiki/Marsaglia_polar_method
+sub rand_normal
+{
+ my $mm = shift;
+ my $ss = shift;
+ $ss = 1 if($ss<=0);
+
+ state $pair = 0;
+ state $rn = 0;
+ 
+ if($pair>0){
+  $pair = 0;
+  return $rn*$ss + $mm;
+ }
+
+ my $rr = 0;
+ my $uu = 0;
+ my $vv = 0;
+ while($rr<=0 or $rr>=1){
+  $uu = 2*rand() - 1;
+  $vv = 2*rand() - 1;
+  $rr = $uu*$uu + $vv*$vv;
+ }
+ my $xx = sqrt(-2*log($rr)/$rr);
+ $rn = $vv*$xx;
+ $pair = 1;
+ return $uu*$xx*$ss + $mm;
+}
+
+############################################################
+#	rand_exp($ll)
+############################################################
+# randomly distributed Exp(lambda)
+# expectation = 1/lambda (!)
+# https://en.wikipedia.org/wiki/Exponential_distribution
+sub rand_exp
+{
+ my $ll = shift;
+ $ll = 1 if($ll<=0);
+
+ my $pp = rand();
+ return 0 if($pp==0);
+ return -log(1-$pp)/$ll;
+}
+
+############################################################
+#	rand_poisson($ll)
+############################################################
+# randomly distributed Poisson(lambda)
+# expectation = lambda
+# https://en.wikipedia.org/wiki/Poisson_distribution
+# inverse transform sampling for lambda < 256
+# https://doi.org/10.1007%2F978-1-4613-8643-8_10
+# normal approximation for lambda >= 256
+sub rand_poisson
+{
+ my $ll = shift;
+ $ll = 1 if($ll<=0);
+
+ if($ll>=256){				# use normal approximation for lambda >= 256
+  my $rr = -1; 
+  while($rr<0){ $rr = rand_normal($ll,sqrt($ll));}
+  return int($rr+0.5);
+ }
+
+ my $kk = 0;
+ my $pp = exp(-$ll); $pp>0 or die "Underflow with Poisson parameter lambda [$ll] in rand_poisson()";
+ my $ss = $pp;
+ my $rr = rand();
+
+ while($ss<$rr){
+  $kk++;
+  $pp = $pp*$ll/$kk;
+  $ss += $pp;
+ }
+
+ return $kk;
 }
