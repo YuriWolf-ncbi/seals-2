@@ -64,6 +64,7 @@ $ntcomp = "AGTC";
 "8101"=>"FFLLSSSSYY*QCC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
 "8110"=>"FFLLSSSSYYQ*CC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
 "9111"=>"FFLLSSSSYY**CC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
+"666"=> "FFLLSSSSYY12CC3WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG",
 );
 
 %codest = (
@@ -101,6 +102,7 @@ $ntcomp = "AGTC";
 "8101"=>"---M---------------M------------MMMM---------------M------------",
 "8110"=>"---M---------------M------------MMMM---------------M------------",
 "9111"=>"---M---------------M------------MMMM---------------M------------",
+"666"=> "---M---------------M---------------M----------------------------",
 );
 
 %codenm = (
@@ -138,6 +140,17 @@ $ntcomp = "AGTC";
 "8101"=>"generic TAA+TGA-stop code",
 "8110"=>"generic TAG+TGA-stop code",
 "9111"=>"generic TAA+TAG+TGA-stop (standard) code",
+"666"=>"TAA->1 TAG->2 TGA->3 (standard) code",
+);
+
+@code_patterns = (
+"X**	TAA	X**",
+"*X*	TAG	15,16,22",
+"**X	TGA	2,3,4,5,9,10,13,21,24,25",
+"XX*	TAA,TAG	6,29,30",
+"X*X	TAA,TGA	14,33",
+"*XX	TAG,TGA	*XX",
+"XXX	TAA,TAG,TGA	27,28,31",
 );
 
 ############################################################
