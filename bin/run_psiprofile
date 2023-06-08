@@ -1,0 +1,279 @@
+#!/usr/bin/perl5.16
+
+############################################################
+#	Template:	1.5, August 09, 2018
+#	Parent Path:	/home/wolf/bin on frosty
+############################################################
+
+############################################################
+#	System etc
+############################################################
+use lib "/home/wolf/perl5/lib/perl5";
+use YIW::basic;
+# uncomment the next line if better randomness is important
+# use Math::Random::MT qw/rand srand/;
+
+our $Pver = "0.7";
+our $Pdat = "August 05 2021";
+
+our ($Pnam) = ($0 =~ m/([^\/]+)$/);
+our ($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
+
+our $Ppid = $$;	# Process ID
+our $Base = "tmp.$Pnam.$Ppid";
+{
+ my ($host) = ($ENV{"HOSTNAME"} =~ m/^(\w+)/);
+ my $salt = sprintf ".%s.%03d",$host,int(rand(1000));
+ $Base .= $salt;
+}
+our $CMD = "";
+our $DEBUG = 0;
+our $VERBOSE = 1;
+our $DOIT = 1;
+our $EXITCODE = 0;
+
+############################################################
+#	Definitions
+############################################################
+my $fali = "ETAOIN SHRDLU";
+my $fasta = 0;
+my $xcons = 0;
+my $athr = 0.01;
+my $gcon = 0.499;
+my $nque = "query";
+my $dthr = 0;
+
+my $dbas = "ETAOIN SHRDLU";
+my $dbsize = 20000000;
+my $optidlist = "";
+my $idfile = "";
+my $gifile = "";
+
+my $ethr = 0.01;
+my $q300 = 0;
+my $optcom = "d";
+my $optseg = "no";
+
+my @outfml = qw/7 qseqid sseqid qlen slen qstart qend sstart send evalue bitscore/;
+my $outfmt = join " ",@outfml;
+my $modeids = "seqid";
+my $psilookup = 9;
+my $max_tar = 10000;
+my $min_max_tar = 5;
+
+############################################################
+#	Global variables
+############################################################
+
+############################################################
+#	Instructions etc
+############################################################
+$Instructions = <<EOINPUT;
+
+$Path/$Pnam $Pver, $Pdat
+
+Use: $Pnam db -a= srfile [options]
+
+Runs PSI-BLAST using an alignment as PSSM against a database;
+format: \"$outfmt\"
+
+Options:
+
+	-a=srfile	alignment file (MANDATORY!)
+
+	-fasta		alignment in FASTA (default seqrows)
+
+	-xcon		alignment has consensus as the 1st sequence
+
+	-athr=x		alignment cleanup threshold (default $athr, <0 no)
+
+	-gcon=x		consensus gap threshold (default $gcon)
+
+	-nque=name	query name (default $nque)
+
+	-mul=x		multiple profiles with tree depth thresholf x (default no)
+			<0 for blastp with consensus
+
+	-e=x		target e-value (default $ethr)
+
+	-q300=x		e-value threshold dependent on length (2 recommended)
+
+	-nocomp		no composition-based statistics (default yes)
+
+	-id=xxx		ID fromat in PSI-BLAST (default $modeids)
+
+	-maxb=n		max number of hits (default $max_tar)
+
+	-glist=file	limit search to a list of GIs
+
+	-ilist=file	limit search to a list of IDs
+
+Requirements:
+
+	Wolf\'s scripts, BLAST, FastTree
+EOINPUT
+
+############################################################
+#	code start
+############################################################
+
+#---	get and process arguments --------------------------
+YIW::basic::my_args(\@ARGV,1);					# pass 0 to block STDIN
+!@myGlobList and print $Instructions and exit 0;
+
+if(exists $myOptList{"DEBUG"}){ 					# hidden common option
+ $DEBUG = 1;
+ $VERBOSE = 0x7fff;
+}
+$VERBOSE = int $myOptList{"VERB"} if(exists $myOptList{"VERB"});	# hidden common option
+$DOIT = 0 if(exists $myOptList{"IDLE"});				# hidden common option
+$Base = $myOptList{"BASE"} if($myOptList{"BASE"} ne "");		# hidden common option
+if((lc $Base) eq "safe"){						# slow but safe
+ while(1){
+  my $bnum = int(rand(0x7fffffff));
+  $Base = "tmp.$Pnam.$bnum";
+  last if((glob "$Base.*")==0);
+ }
+}
+# examples for using options:
+# $opts = 1 if(exists $myOptList{"q"});				# on/off
+# $opti = int $myOptList{"i"} if(int $myOptList{"i"}>0);	# positive integer
+# $opti = int $myOptList{"i"} if(exists $myOptList{"i"});	# any integer <- string
+# $optr = $myOptList{"x"} + 0 if($myOptList{"x"}>0);		# positive real
+# $optl = $myOptList{"l"} if($myOptList{"l"} ne "");		# non-empty string
+# $optx = "0" if($optx==0);					# to be passed in command line
+
+$fali = $myOptList{"a"} if($myOptList{"a"} ne "");
+$fasta = 1 if(exists $myOptList{"fasta"});
+$xcons = 1 if(exists $myOptList{"xcon"});
+$gcon = $myOptList{"gcon"} + 0 if(exists $myOptList{"gcon"});
+$athr = $myOptList{"athr"} + 0 if(exists $myOptList{"athr"});
+$nque = $myOptList{"nque"} if($myOptList{"nque"} ne "");
+$dthr = $myOptList{"mul"} + 0 if($myOptList{"mul"} ne "");
+$ethr = $myOptList{"e"} + 0 if($myOptList{"e"}>0);
+$q300 = $myOptList{"q300"} + 0 if($myOptList{"q300"}>0);
+$optcom = "0" if(exists $myOptList{"nocomp"});
+$max_tar = int $myOptList{"maxb"} if(int $myOptList{"maxb"}>0);
+$modeids = $myOptList{"id"} if($myOptList{"id"} ne "");
+$idfile = $myOptList{"ilist"} if($myOptList{"ilist"} ne "");
+$gifile = $myOptList{"glist"} if($myOptList{"glist"} ne "");
+
+$athr = -1 if($xcons>0);					# alignmnt is sacred
+# $optidlist = ... if($idfile ne "");				# list limit options handled in the main code
+# $optidlist = ... if($gifile ne "");				# list limit options handled in the main code
+$max_tar = $min_max_tar if($max_tar<$min_max_tar);		# never set -max_target_seqs too low
+
+$outfml[2] = "s".$modeids;					# custom output format
+$outfmt = join " ",@outfml;
+
+my $dbas = shift @myGlobList;
+
+#---	rest of the code -----------------------------------
+# $CMD = ""; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
+#
+# foreach my $xarg (@myGlobList){
+#  my @xglo = glob $xarg;
+#  foreach my $name (@xglo){
+#  }
+# }
+#
+# print STDERR "$Pnam:\tReading $dlst/$core.$clst\n" if($VERBOSE);
+# open HAND,"<$dlst/$core.$clst" or die "$Pnam:\tCan't read \"$dlst/$core.$clst\"";
+# while(<HAND>){
+#  chomp;
+# }
+# close HAND;
+# printf STDERR "$Pnam:\t\t%s\tgenomes\n",int_commify(scalar @glist) if($VERBOSE);
+#
+# log_this_point($Pnam,"$Pnam\t$Ppid","started") if($VERBOSE>1);
+
+#---	prepare list limits option(s) ----------------------
+$optidlist = "-gilist $gifile" if($gifile ne "");		# limit to list
+if($idfile ne ""){						# limit to list; ID list overrides
+ my $vers = `blastdbcmd -db $dbas -info | nemp -r=\"(?i)blastdb\\s+version:\\s+(\\d+)\"` + 0;
+ if($vers>=5){
+  $CMD = "blastdb_aliastool -seqid_file_in $idfile -seqid_file_out $Base.idl"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
+  $optidlist = "-seqidlist $Base.idl" ;
+ }else{
+  $optidlist = "-seqidlist $idfile" ;
+ }
+}
+
+#---	prepare PSSM: format -------------------------------
+$CMD = "cat $fali";
+$CMD = "fake_gi -b=1 -p=\"yiw_ali_\" $fali | fa2sr -w=1" if($fasta);
+$CMD .= " > $Base.s0"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT);
+#---	prepare PSSM: work alignment -----------------------
+$CMD = "cat $Base.s0";
+$CMD = "sr_scoreMatch -g= $gcon $Base.s0 | tab_select -kcut= $athr > $Base.ok ; tab_select $Base.s0 -t= $Base.ok -k2=2 -s1='\\s+'" if($athr>=0);
+$CMD .= " | sr_filter -conplus -gcon= $gcon -hcon= 0 -grcut= $gcon" unless($xcons);
+$CMD .= " > $Base.sr"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT);
+#---	prepare PSSM: consensus file -----------------------
+$CMD = "fslice -b=1 -n=1 $Base.sr | sr2fa | fa_strict -l=1 > $Base.fa"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT);
+
+#---	consensus length, adjust threshold -----------------
+if($q300>0){
+ my $conl = 300;
+ $conl = `fa2len $Base.fa` + 0 if($DOIT);
+ $ethr *= (300/$conl)**$q300;
+}
+my $nhit = $max_tar*2;
+my $erun = $ethr*10;
+
+#---	run psiblast single --------------------------------
+{
+$CMD = "psiblast -db $dbas $longids -dbsize $dbsize $optidlist -query $Base.fa -evalue $erun -seg $optseg -comp_based_stats $optcom -max_target_seqs $nhit -outfmt \"$outfmt\" -out $Base.x.tab"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT);
+$CMD = "perl -pe \"s/^\\w\\S*/$nque/\" $Base.x.tab"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT);
+unlink <$Base.*.tab> unless($DEBUG);
+}
+#---	run psiblast single profile ------------------------
+if($dthr>=0){
+$CMD = "sr2fa -b=80 $Base.sr > $Base.afa"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT);
+$CMD = "psiblast -db $dbas $longids -dbsize $dbsize $optidlist -in_msa $Base.afa -ignore_msa_master -threshold $psilookup -evalue $erun -seg $optseg -comp_based_stats $optcom -max_target_seqs $nhit -outfmt \"$outfmt\" -out $Base.0.tab"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT);
+$CMD = "perl -pe \"s/^\\w\\S*/$nque/\" $Base.0.tab"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT);
+unlink <$Base.*.tab> unless($DEBUG);
+}
+
+if($dthr>0 and $DOIT){					# IF ($dthr>0 and $DOIT)
+my $nseq = `wc -l $Base.sr` - 1;
+if($nseq>1){						# IF ($nseq>1)
+#---	prepare multiple -----------------------------------
+$CMD = "fslice -b=2 $Base.sr | sr2fa > $Base.0.fa"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT);
+$CMD = "FastTree -gamma -wag -quiet $Base.0.fa > $Base.0.ft.tre"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT);
+$CMD = "tree_root -r $Base.0.ft.tre > $Base.0.r.tre"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT);
+$CMD = "tree_ultra $Base.0.r.tre > $Base.0.u.tre"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT);
+$CMD = "tree_tips -d= $dthr -w=2 -s $Base.0.u.tre > $Base.0.mul.tre"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT);
+#---	run psiblast multiple ------------------------------
+my $ii = 1;
+open HAND,"<$Base.0.mul.tre" or die "$Pnam:\tCan't read \"$Base.0.mul.tre\"";
+while(<HAND>){
+ chomp;
+ open HANX,">$Base.$ii.tre" or die "$Pnam:\tCan't write \"$Base.$ii.tre\"";
+ printf HANX "%s\n",$_;
+ close HANX;
+ #open HANX,">$Base.$ii.lst" or die "$Pnam:\tCan't write \"$Base.$ii.lst\"";
+ #printf HANX "%s\n","CONSENSUS";
+ #close HANX;
+ $CMD = "tree_listnodes $Base.$ii.tre >> $Base.$ii.lst"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT);
+ $CMD = "fslice -b=1 -n=1 $Base.sr > $Base.$ii.sr"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT);
+ $CMD = "tab_select $Base.sr -t= $Base.$ii.lst -s1='\\s+' >> $Base.$ii.sr"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT);
+ $CMD = "sr2fa -b=80 $Base.$ii.sr > $Base.$ii.afa"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT);
+ $CMD = "psiblast -db $dbas $longids -dbsize $dbsize $optidlist -in_msa $Base.$ii.afa -ignore_msa_master -threshold $psilookup -evalue $erun -seg $optseg -comp_based_stats $optcom -max_target_seqs $nhit -outfmt \"$outfmt\" -out $Base.$ii.tab"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT);
+ $CMD = "perl -pe \"s/^\\w\\S*/$nque/\" $Base.$ii.tab"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT);
+ unlink <$Base.$ii.*> unless($DEBUG);
+ $ii++;
+}
+close HAND;
+}							# ENDIF ($nseq>1)
+}							# ENDIF ($dthr>0 and $DOIT)
+
+#---	clean ----------------------------------------------
+unlink <$Base.*> unless($DEBUG);
+
+############################################################
+#	template_function($xxxx)
+############################################################
+#sub template_function
+#{
+# my $xxxx = shift;
+#}
