@@ -1,0 +1,467 @@
+#!/usr/bin/perl5.16
+
+############################################################
+#	Template:	1.5, August 09, 2018
+#	Parent Path:	/home/wolf/bin on frosty
+############################################################
+
+############################################################
+#	System etc
+############################################################
+use lib "/home/wolf/perl5/lib/perl5";
+use YIW::basic;
+# uncomment the next line if better randomness is important
+# use Math::Random::MT qw/rand srand/;
+
+our $Pver = "1.6";
+our $Pdat = "August 05 2021";
+
+our ($Pnam) = ($0 =~ m/([^\/]+)$/);
+our ($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
+
+our $Ppid = $$;	# Process ID
+our $Base = "tmp.$Pnam.$Ppid";
+{
+ my ($host) = ($ENV{"HOSTNAME"} =~ m/^(\w+)/);
+ my $salt = sprintf ".%s.%03d",$host,int(rand(1000));
+ $Base .= $salt;
+}
+our $CMD = "";
+our $DEBUG = 0;
+our $VERBOSE = 1;
+our $DOIT = 1;
+our $EXITCODE = 0;
+
+############################################################
+#	Definitions
+############################################################
+my $BLANK_SLATE = "ETAOIN_SHRDLU";
+my $flst = $BLANK_SLATE;
+my $dcor = $BLANK_SLATE;
+my $sali = "sr";
+my $fasta = "";
+my $xcons = "";
+my $athr = 0.01;
+my $gcon = 0.499;
+my $dthr = "0";
+my $ethr = 0.01;
+my $prun = 1;
+my $q300 = "0";
+my $compopt = "";
+my $max_tar = 10000;
+my $min_max_tar = 5;
+my $optidlist = "";
+my $idfile = "";
+my $gifile = "";
+my $dbla = "blaco";
+my $batch = -2;
+my $sgemin = 20;
+my $idwrd = "0";
+my $othr = 0.25;
+my $pthr = 0.333;
+my $cthr = 0.75;
+my $gmax = 1500;
+my $wbas = 60;
+my $dquo = 0.5;
+my $name = "psicognitor";
+my $modeopt = 0;
+my $modesco = 0;
+my $modeqpa = 0;
+my $modebla = 0;
+my $modequi = 0;
+my $modecog = 1;
+my $sbla = "p.tab";
+my $modent = 0;
+my $faan = "_aa2nt";
+my $dbnt = "";
+my $modehuge = 0;
+my $modeids = "seqid";
+
+############################################################
+#	Global variables
+############################################################
+my %plst = ();
+
+############################################################
+#	Instructions etc
+############################################################
+$Instructions = <<EOINPUT;
+
+$Path/$Pnam $Pver, $Pdat
+
+Use: $Pnam db -l= proflist -d=dcore [options]
+
+Runs run_psiprofile | btab2path | path_read_combine on a database;
+maps profiles on the sequences; returns CSV
+
+Options:
+
+	-nt		nt database, 6-frame no-stop analysis (default aa)
+
+	-l=proflist	profile names (MANDATORY!)
+
+	-d=dcore	directory with core alignments (MANDATORY!)
+
+	-cdd		CDD-style alignments (FASTA, consensus)
+
+	-sali=sali	alignment suffix (default $sali)
+
+	-fasta		alignments in FASTA (default seqrows)
+
+	-xcon		alignments have consensus as the 1st sequence
+
+	-athr=x		alignment cleanup threshold (default $athr, <0 no)
+
+	-gcon=x		consensus gap threshold (default $gcon)
+
+	-mul=x		multiple profiles with tree depth thresholf x (default no)
+			<0 for blastp with consensus
+
+	-e=x		target e-value (default $ethr)
+
+	-q300=x		e-value threshold dependent on length (2 recommended)
+
+	-p=x		run blast with e-value *10^x (default $prun)
+
+	-nocomp		no composition-based statistics (default yes)
+
+	-maxb=n		max number of hits (default $max_tar)
+
+	-id=xxx		ID fromat in PSI-BLAST (default $modeids)
+
+	-glist=file	limit search to a list of GIs
+
+	-ilist=file	limit search to a list of IDs
+
+	-dbla=dir	BLAST directory (default $dbla)
+
+	-bt=n		run on SGE in batches of n (default $batch, see submitSGEfarm)
+
+	-w=n		use n-th word of ID in BLAST (default all)
+
+	-othr=x		max overlap between HSPs (default $othr)
+
+	-pthr=x		max overlap between paths (default $pthr)
+
+	-cthr=x		min coverage for full-length hit (default $cthr)
+
+	-lgap=n		maximum gap to span between segments (default $gmax)
+
+	-mind=n		min domain length (default $wbas)
+
+	-name=xxx	use xxx for output 2nd field (default $name);
+
+	-o=n		footprint optimization mode
+			0 - expand, resolve and smooth (default)
+			1 - expand and overlaps only
+			2 - overlaps only
+			3 - raw
+
+	-score		add scores and evalues (default no)
+
+	-qpath		add query length and coordinates (default no)
+
+	-reblast	ignore existing files (default reuse)
+
+	-quit		print BLAST commands to stdout and quit
+
+	-nocogs		do NOT run cognitor (BLAST only)
+
+	-huge		use for huge $dbla/*.$sbla outputs
+
+Requirements:
+
+	Wolf\'s scripts, BLAST, FastTree, SGE
+EOINPUT
+
+############################################################
+#	code start
+############################################################
+
+#---	get and process arguments --------------------------
+YIW::basic::my_args(\@ARGV,1);					# pass 0 to block STDIN
+!@myGlobList and print $Instructions and exit 0;
+
+if(exists $myOptList{"DEBUG"}){ 					# hidden common option
+ $DEBUG = 1;
+ $VERBOSE = 0x7fff;
+}
+$VERBOSE = int $myOptList{"VERB"} if(exists $myOptList{"VERB"});	# hidden common option
+$DOIT = 0 if(exists $myOptList{"IDLE"});				# hidden common option
+$Base = $myOptList{"BASE"} if($myOptList{"BASE"} ne "");		# hidden common option
+if((lc $Base) eq "safe"){						# slow but safe
+ while(1){
+  my $bnum = int(rand(0x7fffffff));
+  $Base = "tmp.$Pnam.$bnum";
+  last if((glob "$Base.*")==0);
+ }
+}
+# examples for using options:
+# $opts = 1 if(exists $myOptList{"q"});				# on/off
+# $opti = int $myOptList{"i"} if(int $myOptList{"i"}>0);	# positive integer
+# $opti = int $myOptList{"i"} if(exists $myOptList{"i"});	# any integer <- string
+# $optr = $myOptList{"x"} + 0 if($myOptList{"x"}>0);		# positive real
+# $optl = $myOptList{"l"} if($myOptList{"l"} ne "");		# non-empty string
+# $optx = "0" if($optx==0);					# to be passed in command line
+$flst = $myOptList{"l"} if($myOptList{"l"} ne "");
+$dcor = $myOptList{"dcor"} if($myOptList{"dcor"} ne "");	# alternative
+$dcor = $myOptList{"d"} if($myOptList{"d"} ne "");
+$sali = $myOptList{"sali"} if($myOptList{"sali"} ne "");
+$fasta = "-fasta" if(exists $myOptList{"fasta"});
+$xcons = "-xcon" if(exists $myOptList{"xcon"});
+$athr = $myOptList{"athr"} + 0 if(exists $myOptList{"athr"});
+$gcon = $myOptList{"gcon"} + 0 if(exists $myOptList{"gcon"});
+$dthr = $myOptList{"mul"} + 0 if(exists $myOptList{"mul"}); $dthr = "0" if($dthr==0);
+$ethr = $myOptList{"e"} + 0 if($myOptList{"e"}>0);
+$prun = $myOptList{"p"} + 0 if($myOptList{"p"}>0);
+$q300 = $myOptList{"q300"} + 0 if($myOptList{"q300"}>0);
+$compopt = "-nocomp" if(exists $myOptList{"nocomp"});
+$max_tar = int $myOptList{"maxb"} if(int $myOptList{"maxb"}>0);
+$idfile = $myOptList{"ilist"} if($myOptList{"ilist"} ne "");
+$gifile = $myOptList{"glist"} if($myOptList{"glist"} ne "");
+$dbla = $myOptList{"dbla"} if($myOptList{"dbla"} ne "");
+$batch = $myOptList{"bt"}+0 if(exists $myOptList{"bt"});
+$idwrd = int $myOptList{"w"} if(exists $myOptList{"w"});  $idwrd = "0" if($idwrd==0);
+$othr = $myOptList{"othr"} + 0 if(exists $myOptList{"othr"});
+$pthr = $myOptList{"pthr"} + 0 if(exists $myOptList{"pthr"});
+$cthr = $myOptList{"cthr"} + 0 if(exists $myOptList{"cthr"});
+$gmax = int $myOptList{"lgap"} if(int $myOptList{"lgap"}>0);
+$wbas = int $myOptList{"mind"} if(int $myOptList{"mind"}>0);
+$name = $myOptList{"name"} if($myOptList{"name"} ne "");
+$suff = $myOptList{"suff"} if($myOptList{"suff"} ne "");
+$modeopt = int $myOptList{"o"} if(exists $myOptList{"o"}); $modeopt = "0" if($modeopt==0);
+$modesco = 1 if(exists $myOptList{"score"});
+$modeqpa = 1 if(exists $myOptList{"qpath"});
+$modebla = 1 if(exists $myOptList{"reblast"});
+$modequi = 1 if(exists $myOptList{"quit"});
+$modecog = 0 if(exists $myOptList{"nocogs"});
+$modent = 1 if(exists $myOptList{"nt"});
+$modehuge = 1 if(exists $myOptList{"huge"});
+$modeids = $myOptList{"id"} if($myOptList{"id"} ne "");
+
+if(exists $myOptList{"cdd"}){					# CDD-style conventions
+ $sali = "FASTA";
+ $fasta = "-fasta";
+ $xcons = "-xcon";
+}
+$athr = -1 if($xcons>0);					# alignmnt is sacred
+$optidlist = "-glist= $gifile" if($gifile ne "");		# limit to list
+$optidlist = "-ilist= $idfile" if($idfile ne "");		# limit to list; ID list overrides GI list
+$max_tar = $min_max_tar if($max_tar<$min_max_tar);		# never set -max_target_seqs too low
+
+my $dbas = shift @myGlobList;
+
+#---	rest of the code -----------------------------------
+# $CMD = ""; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
+#
+# foreach my $xarg (@myGlobList){
+#  my @xglo = glob $xarg;
+#  foreach my $name (@xglo){
+#  }
+# }
+#
+# print STDERR "$Pnam:\tReading $dlst/$core.$clst\n" if($VERBOSE);
+# open HAND,"<$dlst/$core.$clst" or die "$Pnam:\tCan't read \"$dlst/$core.$clst\"";
+# while(<HAND>){
+#  chomp;
+# }
+# close HAND;
+# printf STDERR "$Pnam:\t\t%s\tgenomes\n",int_commify(scalar @glist) if($VERBOSE);
+#
+# log_this_point($Pnam,"$Pnam\t$Ppid","started") if($VERBOSE>1);
+
+#---	check locations ------------------------------------
+-e $flst or die "profile list \"$flst\" doesn't exist";
+-e $dbla or die "BLAST directory \"$dbla\" doesn't exist";
+# -e $dcor or die "core alignments directory \"$dcor\" doesn't exist"; # not necessary if second run
+
+#---	preprocess nucleotide sequences --------------------
+if($modent){
+if(not -e "$dbla/$faan.tab"){
+my %nt2le = (); my %aa2nt = (); my %aa2fr = ();
+$CMD = "blastdbcmd -db $dbas -dbtype nucl -entry all | fa_strict -u > $Base.nt.fa"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
+$CMD = "fa2len -t -s -w=$idwrd $Base.nt.fa > $Base.len.tab"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
+print STDERR "$Pnam:\tReading $Base.len.tab\n" if($VERBOSE);
+open HAND,"<$Base.len.tab" or die "$Pnam:\tCan't read \"$Base.len.tab\"";
+while(<HAND>){
+ chomp;
+ my ($id,$le) = split/\t/;
+ $nt2le{$id} = int($le) if(int($le)>0);
+}
+close HAND;
+printf STDERR "$Pnam:\t\t%s\tnt sequences\n",int_commify(scalar keys %nt2le) if($VERBOSE);
+$CMD = "orf $Base.nt.fa -c=6000 -f=0 -m=0 -w=$idwrd -n=0 | fa_strict -u -l=1 | fake_gi -b=1 -d=6 -p=\"my_orf_\" > $Base.aa.fa"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
+my $tmp_orf_count = 0;
+print STDERR "$Pnam:\tReading $Base.aa.fa\n" if($VERBOSE);
+open HAND,"<$Base.aa.fa" or die "$Pnam:\tCan't read \"$Base.aa.fa\"";
+while(<HAND>){
+ chomp;
+ my ($ia,$in) = m/^>(\S+)\s+(\S+)/;
+ next if($in eq "");
+ $aa2nt{$ia} = $in;
+ my $fr = ($tmp_orf_count % 6) + 1; $fr = 3 - $fr if($fr>3);
+ $aa2fr{$ia} = $fr;
+ $tmp_orf_count++;
+}
+close HAND;
+printf STDERR "$Pnam:\t\t%s\taa sequences\n",int_commify(scalar keys %aa2nt) if($VERBOSE);
+open HAND,">$dbla/$faan.tab" or die "$Pnam:\tCan't write \"$dbla/$faan.tab\"";
+foreach my $ia (keys %aa2nt){
+ printf HAND "%s\t%d\t%s\t%d\n",$ia,$aa2fr{$ia},$aa2nt{$ia},$nt2le{$aa2nt{$ia}};
+}
+close HAND;
+$CMD = "makeblastdb -in $Base.aa.fa -dbtype prot -parse_seqids -out $dbla/$faan.db > /dev/null"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
+}
+$dbnt = $dbas;
+$dbas = "$dbla/$faan.db";
+}
+
+#---	read profile list ----------------------------------
+print STDERR "$Pnam:\tReading $flst\n" if($VERBOSE);
+open HAND,"<$flst" or die "Can't read \"$flst\"";
+while(<HAND>){
+ chomp;
+ my ($pnam) = split/\s+/;
+ next if($pnam eq "");
+ $plst{$pnam} = 1;
+}
+close HAND;
+printf STDERR "$Pnam:\t\t%s\tprofiles\n",int_commify(scalar keys %plst) if($VERBOSE);
+
+#---	check existing files; make command list ------------
+my $erun = $ethr*(10**$prun);
+my $optraw = ""; $optraw = "-raw" if($modeopt>=3);
+my $nbla = 0;
+open HANX,">$Base.cmd.lst" or die "Can't write \"$Base.cmd.lst\"";
+foreach my $pnam (keys %plst){
+ next if($modebla==0 and -e "$dbla/$pnam.$sbla");
+ $CMD = "run_psiprofile $dbas -id=$modeids -a= $dcor/$pnam.$sali $fasta $xcons -athr=$athr -gcon=$gcon -nque= \"$pnam\" -mul=$dthr -e=$erun -q300=$q300 $compopt -maxb=$max_tar $optidlist | btab2path -w=$idwrd -e=$erun -q300=$q300 -othr=$othr -cthr=$cthr -lgap=$gmax -mind=$wbas $optraw | sort -nr > $dbla/$Base.$pnam.tmp ; mv $dbla/$Base.$pnam.tmp $dbla/$pnam.$sbla";
+ printf HANX "%s\n",$CMD;
+ $nbla++;
+}
+close HANX;
+printf STDERR "$Pnam:\t\t%s\tBLAST searches to run\n",int_commify($nbla) if($VERBOSE);
+
+#---	maybe just print it --------------------------------
+if($modequi>0){
+ $CMD = "cat $Base.cmd.lst"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
+ unlink <$Base.*> unless($DEBUG);
+ exit;
+}
+
+#---	run commands on SGE --------------------------------
+if($nbla>=$sgemin){
+ $CMD = "submitSGEfarm $Base.cmd.lst -bt=$batch -rand -work=2 > /dev/null"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
+}elsif($nbla>0){
+ $CMD = "chmod a+x $Base.cmd.lst ; ./$Base.cmd.lst"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
+}
+
+#---	maybe done -----------------------------------------
+if($modecog<=0){
+ unlink <$Base.*> unless($DEBUG);
+ exit;
+}
+
+#---	produce mapping ------------------------------------
+open HANX,">$Base.bla.lst" or die "Can't write \"$Base.bla.lst\"";
+foreach my $pnam (keys %plst){
+ print HANX "$dbla/$pnam.$sbla\n";
+}
+close HANX;
+
+my $cmd_path = "path_read_combine -e=$ethr -q300=$q300 $optidlist -o=$modeopt -othr=$pthr -mind=$wbas";
+if($modehuge){
+ $CMD = "list_runner $Base.bla.lst -c=\"cat {1}\" | tab_disperse_data -k=9 -x=2 -n= $Base.ptab"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
+ $CMD = "ls -1 $Base.ptab.*.tab | list_runner -c=\"$cmd_path -VERB=0 {1}\" > $Base.path.tab"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
+ unlink <$Base.ptab.*.tab>;
+}else{
+ $CMD = "list_runner $Base.bla.lst -c=\"cat {1}\" | $cmd_path > $Base.path.tab"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
+}
+
+#---	produce output -------------------------------------
+my $fout = "-"; $fout = "$Base.aa.csv" if($modent);
+print STDERR "$Pnam:\tReading $Base.path.tab\n" if($VERBOSE);
+open HANX,">$fout" or die "Can't write \"$fout\"";
+open HAND,"<$Base.path.tab" or die "Can't read \"$Base.path.tab\"";
+while(<HAND>){
+ chomp;
+ my ($ss,$code,$path,$patq,$lenp,$lenq,$pl,$ql,$id,$prof,$ev) = split/\t/;
+ print HANX (join ",",($id,$name,$id,$pl,$path,$lenp,$prof,$prof,$code));
+ if($modesco>0){
+  print HANX ",$ss";
+  my $elin = $ev;
+  if($ev<0.001){ $elin =~ s/\.([0-9][1-9]*)0+e/.\1e/i;}
+  else{ $elin = sprintf "%.3f",$ev; $elin =~ s/\.([0-9][1-9]*)0+$/.\1/;}
+  print HANX ",$elin";
+ }
+ if($modeqpa>0){
+  print HANX ",$ql,$patq,";
+ }
+ print HANX "\n";
+}
+close HAND;
+close HANX;
+
+#---	preprocess nucleotide sequences --------------------
+if($modent){
+my %nt2le = (); my %aa2nt = (); my %aa2fr = ();
+print STDERR "$Pnam:\tReading $dbla/$faan.tab\n" if($VERBOSE);
+open HAND,"<$dbla/$faan.tab" or die "$Pnam:\tCan't read \"$dbla/$faan.tab\"";
+while(<HAND>){
+ chomp;
+ my ($ia,$fr,$in,$ln) = split/\t/;
+ $aa2fr{$ia} = $fr if($aa2fr{$ia} eq "");
+ $aa2nt{$ia} = $in if($aa2nt{$ia} eq "");
+ $nt2le{$in} = $ln if($nt2le{$in} eq "");
+}
+close HAND;
+printf STDERR "$Pnam:\t\t%s\taa sequences\n",int_commify(scalar keys %aa2nt) if($VERBOSE);
+printf STDERR "$Pnam:\t\t%s\tnt sequences\n",int_commify(scalar keys %nt2le) if($VERBOSE);
+
+print STDERR "$Pnam:\tReading $Base.aa.csv\n" if($VERBOSE);
+open HAND,"<$Base.aa.csv" or die "$Pnam:\tCan't read \"$Base.aa.csv\"";
+while(<HAND>){
+ chomp;
+ my ($xx,$yy,$ia,$lp,$pa,$lh,$co,@rest) = split/,/;
+ my $in = $aa2nt{$ia};
+ my $fr = $aa2fr{$ia};
+ my $ln = $nt2le{$in};
+ my $tmp_count_end = 0;
+ my @paxx = split/(\D+)/,$pa;
+ for(my $i=0;$i<@paxx;$i++){
+  next if($paxx[$i]<=0);
+  $paxx[$i] = coord_map($paxx[$i],($tmp_count_end%2),$fr,$ln);
+  $tmp_count_end++;
+ }
+ $pa = join "",@paxx;
+ printf "%s\n",(join ",",$in,$yy,$in,$ln,$pa,$lh,$co,@rest);
+}
+close HAND;
+}
+
+#---	clean ----------------------------------------------
+unlink <$Base.*> unless($DEBUG);
+
+############################################################
+#	coord_map($apos,$iend,$afra,$nlen)
+############################################################
+sub coord_map
+{
+ my $apos = shift;
+ my $iend = shift;
+ my $afra = shift;
+ my $nlen = shift;
+
+ my $eoff = 2 if($iend>0);
+ 
+ return $nlen - ($apos-1)*3 + $afra + 1 - $eoff if($afra<0);
+ return ($apos-1)*3 + $afra + $eoff;
+}
+
+############################################################
+#	template_function($xxxx)
+############################################################
+#sub template_function
+#{
+# my $xxxx = shift;
+#}
