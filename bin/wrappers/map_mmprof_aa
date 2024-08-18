@@ -203,7 +203,7 @@ sub process_sequence
  close HANX;
 
 #---	fragment -------------------------------------------
- printf "%s\t%s\t%d-%d\t%s\n",$id,$prof,$p1,$p2,substr($$rseq,$p1-1,$p2-$p1+1);
+ printf "%s\t%d-%d\t%s\t%s\n",$id,$p1,$p2,$prof,substr($$rseq,$p1-1,$p2-$p1+1);
 
 #---	clean ----------------------------------------------
  unlink <$Bdir/tmp.$xv.*> unless($DEBUG);
