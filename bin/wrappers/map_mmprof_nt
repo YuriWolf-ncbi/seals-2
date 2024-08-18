@@ -147,7 +147,7 @@ print STDERR "$Pnam:\tReading $Base.tab\n" if($VERBOSE);
 open HAND,"<$Base.tab" or die "$Pnam:\tCan't read \"$Base.tab\"";
 while(<HAND>){
  chomp;
- my ($idaa,$prof,$frag,$sq) = split/\t/;
+ my ($idaa,$frag,$prof,$sq) = split/\t/;
  my ($p1,$p2) = ($frag =~ m/^(\d+).+\b(\d+)$/);
  my ($idnt,$fram) = ($idaa =~ m/^(.+)_fr(\d+)$/);
  my $x1 = coord_map($p1,0,$fram,$nt2l{$idnt});
