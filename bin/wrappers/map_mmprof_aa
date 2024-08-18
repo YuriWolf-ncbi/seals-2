@@ -38,6 +38,7 @@ our $EXITCODE = 0;
 ############################################################
 $dpro = "";
 $dpmm = "";
+$eval = 100;
 $idwrd = 0;
 $delim = "[ ,;:|]";
 
@@ -65,6 +66,8 @@ Options:
 	-d=profiledir	profile directory (MANDATORY!)
 
 	-m=profiledb	profile DB (MANDATORY!)
+
+	-e=evalue	mmseqs evalue limit (default $eval)
 EOINPUT
 
 ############################################################
@@ -94,6 +97,7 @@ $dpro = $myOptList{"dir"} if($myOptList{"dir"} ne "");			# hidden alternative
 $dpro = $myOptList{"d"} if($myOptList{"d"} ne "");
 $dpmm = $myOptList{"db"} if($myOptList{"db"} ne "");			# hidden alternative
 $dpmm = $myOptList{"m"} if($myOptList{"m"} ne "");
+$eval = $myOptList{"e"} + 0 if($myOptList{"e"}>0);
 
 my $ffaa = shift @myGlobList;
 
@@ -131,10 +135,11 @@ while(<HAND>){
  chomp;
  next if(m/^\#/);
  my ($qq,$hh,$ql,$hl,$qb,$qe,$hb,$he,$ev,$ss) = split/\t/;
+ next if($ev>$eval);
  if($ss>$q2sc{$qq}){ $q2sc{$qq} = $ss; $q2pr{$qq} = $hh;}
 }
 close HAND;
-printf STDERR "$Pnam:\t\t%s\tqueries\n",int_commify(scalar keys %q2pr) if($VERBOSE);
+printf STDERR "$Pnam:\t\t%s\tqueries have hits\n",int_commify(scalar keys %q2pr) if($VERBOSE);
 
 #---	cycle FASTA ----------------------------------------
 my $def = ""; my $seq = "";
