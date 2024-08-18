@@ -12,7 +12,6 @@ use lib "/home/wolf/perl5/lib/perl5";
 use YIW::basic;
 # uncomment the next line if better randomness is important
 # use Math::Random::MT qw/rand srand/;
-use Digest::MD5 qw/md5_hex/;
 
 our $Pver = "0.1";
 our $Pdat = "August 18 2024";
@@ -39,8 +38,6 @@ our $EXITCODE = 0;
 $dpro = "";
 $dpmm = "";
 $eval = 100;
-$idwrd = 0;
-$delim = "[ ,;:|]";
 
 ############################################################
 #	Global variables
@@ -53,9 +50,11 @@ $Instructions = <<EOINPUT;
 
 $Path/$Pnam $Pver, $Pdat
 
-Use: $Pnam query.faa -d=profiledir -m=profiledb [options]
+Use: $Pnam query.fna -d=profiledir -m=profiledb [options]
 
-Finds footprints of the best profile in the DB on amino acid sequences.
+Options:
+
+Finds footprints of the best profile in the DB on nucleotide sequences.
 
 Profile directory contains aligned <name>.FASTA files with consensus sequences on top.
 
@@ -75,7 +74,7 @@ EOINPUT
 ############################################################
 
 #---	get and process arguments --------------------------
-YIW::basic::my_args(\@ARGV,1);					# pass 0 to block STDIN
+YIW::basic::my_args(\@ARGV,0);					# pass 0 to block STDIN
 !@myGlobList and print $Instructions and exit 0;
 
 if(exists $myOptList{"DEBUG"}){ 					# hidden common option
@@ -98,8 +97,9 @@ $dpro = $myOptList{"d"} if($myOptList{"d"} ne "");
 $dpmm = $myOptList{"db"} if($myOptList{"db"} ne "");			# hidden alternative
 $dpmm = $myOptList{"m"} if($myOptList{"m"} ne "");
 $eval = $myOptList{"e"} + 0 if($myOptList{"e"}>0);
+$VERBOSE = "0" if($VERBOSE==0);
 
-my $ffaa = shift @myGlobList;
+my $ffna = shift @myGlobList;
 
 #---	rest of the code -----------------------------------
 # $CMD = ""; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
@@ -120,31 +120,14 @@ my $ffaa = shift @myGlobList;
 #
 # log_this_point($Pnam,"$Pnam\t$Ppid","started") if($VERBOSE>1);
 
-#---	prep -----------------------------------------------
-my $Bdir = YIW::basic::tempdir_make_safe("mmap");
+#---	translate and run ----------------------------------
+$CMD = "orf $ffna -c=6000 -f=0 -m=0 -n=3 -w=0 | fa_strict -u -l=0 -r=X > $Base.faa ; map_mmprof_aa $Base.faa -d= $dpro -m= $dpmm -VERB= $VERBOSE > $Base.tab"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
 
-#---	search ---------------------------------------------
-$CMD = "run_mmsearch $ffaa -fasta -d= $dpmm -s=7.5 > $Bdir/tmp.tab"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
-
-#---	read table -----------------------------------------
-my %q2sc = ();
-my %q2pr = ();
-print STDERR "$Pnam:\tReading $Bdir/tmp.tab\n" if($VERBOSE);
-open HAND,"<$Bdir/tmp.tab" or die "$Pnam:\tCan't read \"$Bdir/tmp.tab\"";
-while(<HAND>){
- chomp;
- next if(m/^\#/);
- my ($qq,$hh,$ql,$hl,$qb,$qe,$hb,$he,$ev,$ss) = split/\t/;
- next if($ev>$eval);
- if($ss>$q2sc{$qq}){ $q2sc{$qq} = $ss; $q2pr{$qq} = $hh;}
-}
-close HAND;
-printf STDERR "$Pnam:\t\t%s\tqueries have hits\n",int_commify(scalar keys %q2pr) if($VERBOSE);
-
-#---	cycle FASTA ----------------------------------------
+#---	read sequence lengths ------------------------------
+my %nt2l = ();
 my $def = ""; my $seq = "";
-print STDERR "$Pnam:\tReading $ffaa\n" if($VERBOSE);
-open HAND,"<$ffaa" or die "$Pnam:\tCan't read \"$ffaa\"";
+print STDERR "$Pnam:\tReading $ffna\n" if($VERBOSE);
+open HAND,"<$ffna" or die "$Pnam:\tCan't read \"$ffna\"";
 while(<HAND>){
  chomp;
  if(m/^>/){
@@ -157,12 +140,24 @@ while(<HAND>){
 }
 close HAND;
 process_sequence(\$seq,\$def) if($seq ne "" and $def ne "");
+printf STDERR "$Pnam:\t\t%s\tsequences\n",int_commify(scalar keys %nt2l) if($VERBOSE);
+
+#---	read hits ------------------------------------------
+print STDERR "$Pnam:\tReading $Base.tab\n" if($VERBOSE);
+open HAND,"<$Base.tab" or die "$Pnam:\tCan't read \"$Base.tab\"";
+while(<HAND>){
+ chomp;
+ my ($idaa,$prof,$frag,$sq) = split/\t/;
+ my ($p1,$p2) = ($frag =~ m/^(\d+).+\b(\d+)$/);
+ my ($idnt,$fram) = ($idaa =~ m/^(.+)_fr(\d+)$/);
+ my $x1 = coord_map($p1,0,$fram,$nt2l{$idnt});
+ my $x2 = coord_map($p2,1,$fram,$nt2l{$idnt});
+ printf "%s\t%d-%d\t%s\t%s\n",$idnt,$x1,$x2,$prof,$sq;
+}
+close HAND;
 
 #---	clean ----------------------------------------------
-# unlink <$Base.*> unless($DEBUG);
-unless($DEBUG){
- $CMD = "rm -r $Bdir"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
-}
+unlink <$Base.*> unless($DEBUG);
 
 ############################################################
 #	process_sequence($rseq,$rdef)
@@ -176,35 +171,24 @@ sub process_sequence
 
  my ($id) = split/\s+/,$$rdef;
  $id = (split/$delim/,$id)[$idwrd-1] if($idwrd>0);
- my $xv = substr(md5_hex($id),0,4);
- my $prof = $q2pr{$id};
- return if($prof eq "");
-
-#---	save sequence --------------------------------------
- open HANX,">$Bdir/tmp.$xv.faa" or die "$Pnam:\tCan't write \"$Bdir/tmp.$xv.faa\"";
- print HANX ">".$id."\n".$$rseq."\n";
- close HANX;
  
-#---	run HHALIGN ----------------------------------------
- $CMD = "run_hhalign $Bdir/tmp.$xv.faa $dpro/$prof.FASTA -fast1 -fast2 -cons1 -cons2 -o= $Bdir/tmp.$xv.txt > /dev/null"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE>1); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
- $CMD = "hhres2btab $Bdir/tmp.$xv.txt > $Bdir/tmp.$xv.tab"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE>1); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
+ $nt2l{$id} = length($$rseq);
+}
 
-#---	read output ----------------------------------------
- my $p1 = 0; my $p2 = 0;
- print STDERR "$Pnam:\tReading $Bdir/tmp.$xv.tab\n" if($VERBOSE>1);
- open HANX,"<$Bdir/tmp.$xv.tab" or die "$Pnam:\tCan't read \"$Bdir/tmp.$xv.tab\"";
- while(<HANX>){
-  chomp;
-  next if(m/^\#/);
-  my ($qq,$hh,$ql,$hl,$qb,$qe,$hb,$he,$ev,$ss) = split/\t/;
-  $p1 = $qb; $p2 = $qe;
-  last;
- }
- close HANX;
+############################################################
+#	coord_map($apos,$iend,$afra,$nlen)
+############################################################
+sub coord_map
+{
+ my $apos = shift;
+ my $iend = shift;
+ my $afra = shift;
+ my $nlen = shift;
 
-#---	fragment -------------------------------------------
- printf "%s\t%s\t%d-%d\t%s\n",$id,$prof,$p1,$p2,substr($$rseq,$p1-1,$p2-$p1+1);
-
-#---	clean ----------------------------------------------
- unlink <$Bdir/tmp.$xv.*> unless($DEBUG);
+ $afra = 3 - $afra if($afra>3);
+ 
+ my $eoff = 2 if($iend>0);
+ 
+ return $nlen - ($apos-1)*3 + $afra + 1 - $eoff if($afra<0);
+ return ($apos-1)*3 + $afra + $eoff;
 }
