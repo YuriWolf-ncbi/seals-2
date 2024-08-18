@@ -1,4 +1,4 @@
-#!/usr/bin/perl5.16
+#!/usr/bin/perl
 
 ############################################################
 #	Template:	1.5, August 09, 2018
@@ -13,8 +13,8 @@ use YIW::basic;
 # uncomment the next line if better randomness is important
 # use Math::Random::MT qw/rand srand/;
 
-our $Pver = "1.6";
-our $Pdat = "August 05 2021";
+our $Pver = "1.7";
+our $Pdat = "March 04 2024";
 
 our ($Pnam) = ($0 =~ m/([^\/]+)$/);
 our ($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
@@ -57,6 +57,7 @@ my $dbla = "blaco";
 my $batch = -2;
 my $sgemin = 20;
 my $idwrd = "0";
+my $mcod = 3;
 my $othr = 0.25;
 my $pthr = 0.333;
 my $cthr = 0.75;
@@ -65,8 +66,9 @@ my $wbas = 60;
 my $dquo = 0.5;
 my $name = "psicognitor";
 my $modeopt = 0;
-my $modesco = 0;
-my $modeqpa = 0;
+my $hardexopt = "";
+my $modesco = 1;
+my $modeqpa = 1;
 my $modebla = 0;
 my $modequi = 0;
 my $modecog = 1;
@@ -135,9 +137,13 @@ Options:
 
 	-dbla=dir	BLAST directory (default $dbla)
 
+	-sge=n		run on SGE if the number of jobs>=n (default $sgemin)
+
 	-bt=n		run on SGE in batches of n (default $batch, see submitSGEfarm)
 
 	-w=n		use n-th word of ID in BLAST (default all)
+
+	-mcod=n		ignore hit codes >n for hit mapping (default $mcod)
 
 	-othr=x		max overlap between HSPs (default $othr)
 
@@ -149,17 +155,17 @@ Options:
 
 	-mind=n		min domain length (default $wbas)
 
-	-name=xxx	use xxx for output 2nd field (default $name);
-
 	-o=n		footprint optimization mode
 			0 - expand, resolve and smooth (default)
 			1 - expand and overlaps only
 			2 - overlaps only
 			3 - raw
 
-	-score		add scores and evalues (default no)
+	-hardex		expand hits with all match codes (default <=1; overrides -o)
 
-	-qpath		add query length and coordinates (default no)
+	-noscore	no scores and evalues (default add)
+
+	-noqpath	no query length and coordinates (default add)
 
 	-reblast	ignore existing files (default reuse)
 
@@ -221,7 +227,9 @@ $idfile = $myOptList{"ilist"} if($myOptList{"ilist"} ne "");
 $gifile = $myOptList{"glist"} if($myOptList{"glist"} ne "");
 $dbla = $myOptList{"dbla"} if($myOptList{"dbla"} ne "");
 $batch = $myOptList{"bt"}+0 if(exists $myOptList{"bt"});
+$sgemin = int $myOptList{"sge"} if(int $myOptList{"sge"}>0);
 $idwrd = int $myOptList{"w"} if(exists $myOptList{"w"});  $idwrd = "0" if($idwrd==0);
+$mcod = int $myOptList{"mcod"} if(exists $myOptList{"mcod"}); $mcod = "0" if($mcod==0);
 $othr = $myOptList{"othr"} + 0 if(exists $myOptList{"othr"});
 $pthr = $myOptList{"pthr"} + 0 if(exists $myOptList{"pthr"});
 $cthr = $myOptList{"cthr"} + 0 if(exists $myOptList{"cthr"});
@@ -230,8 +238,9 @@ $wbas = int $myOptList{"mind"} if(int $myOptList{"mind"}>0);
 $name = $myOptList{"name"} if($myOptList{"name"} ne "");
 $suff = $myOptList{"suff"} if($myOptList{"suff"} ne "");
 $modeopt = int $myOptList{"o"} if(exists $myOptList{"o"}); $modeopt = "0" if($modeopt==0);
-$modesco = 1 if(exists $myOptList{"score"});
-$modeqpa = 1 if(exists $myOptList{"qpath"});
+if(exists $myOptList{"hardex"}){ $hardexopt = "-hardex"; $modeopt = "0";}
+$modesco = 0 if(exists $myOptList{"noscore"});
+$modeqpa = 0 if(exists $myOptList{"noscore"});
 $modebla = 1 if(exists $myOptList{"reblast"});
 $modequi = 1 if(exists $myOptList{"quit"});
 $modecog = 0 if(exists $myOptList{"nocogs"});
@@ -369,7 +378,7 @@ foreach my $pnam (keys %plst){
 }
 close HANX;
 
-my $cmd_path = "path_read_combine -e=$ethr -q300=$q300 $optidlist -o=$modeopt -othr=$pthr -mind=$wbas";
+my $cmd_path = "path_read_combine -e=$ethr -q300=$q300 $optidlist -o=$modeopt -mcod=$mcod -othr=$pthr -mind=$wbas $hardexopt";
 if($modehuge){
  $CMD = "list_runner $Base.bla.lst -c=\"cat {1}\" | tab_disperse_data -k=9 -x=2 -n= $Base.ptab"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
  $CMD = "ls -1 $Base.ptab.*.tab | list_runner -c=\"$cmd_path -VERB=0 {1}\" > $Base.path.tab"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
@@ -386,7 +395,7 @@ open HAND,"<$Base.path.tab" or die "Can't read \"$Base.path.tab\"";
 while(<HAND>){
  chomp;
  my ($ss,$code,$path,$patq,$lenp,$lenq,$pl,$ql,$id,$prof,$ev) = split/\t/;
- print HANX (join ",",($id,$name,$id,$pl,$path,$lenp,$prof,$prof,$code));
+ print HANX (join ",",("","",$id,$pl,$path,$lenp,$prof,"",$code));
  if($modesco>0){
   print HANX ",$ss";
   my $elin = $ev;
@@ -434,7 +443,7 @@ while(<HAND>){
   $tmp_count_end++;
  }
  $pa = join "",@paxx;
- printf "%s\n",(join ",",$in,$yy,$in,$ln,$pa,$lh,$co,@rest);
+ printf "%s\n",(join ",","","",$in,$ln,$pa,$lh,$co,@rest);
 }
 close HAND;
 }
