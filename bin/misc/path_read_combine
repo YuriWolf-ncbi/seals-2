@@ -1,4 +1,4 @@
-#!/usr/bin/perl5.16
+#!/usr/bin/perl
 
 ############################################################
 #	Template:	1.5, August 09, 2018
@@ -14,8 +14,8 @@ use YIW::blast;
 # uncomment the next line if better randomness is important
 # use Math::Random::MT qw/rand srand/;
 
-our $Pver = "0.3";
-our $Pdat = "November 26 2019";
+our $Pver = "0.6";
+our $Pdat = "August 09 2024";
 
 our ($Pnam) = ($0 =~ m/([^\/]+)$/);
 our ($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
@@ -40,9 +40,12 @@ my $ethr = 1e10;
 my $q300 = 0;
 my $idfile = "";
 my $modeopt = 0;
+my $mcod = 3;
 my $othr = 0.333;
 my $wbas = 60;
 my $dquo = 0.5;
+my $hardexpand = 0;
+
 
 ############################################################
 #	Global variables
@@ -70,6 +73,10 @@ Options:
 			0 - expand, resolve and smooth (default)
 			1 - expand only
 			2 - as is
+
+	-hardex		expand hits with all match codes (default <=1; overrides -o)
+
+	-mcod=n		ignore hit codes >n for hit mapping (default $mcod)
 
 	-othr=x		max overlap between HSPs (default $othr)
 
@@ -110,8 +117,12 @@ $q300 = $myOptList{"q300"} + 0 if($myOptList{"q300"}>0);
 $idfile = $myOptList{"glist"} if($myOptList{"glist"} ne "");	# same as "-ilist"
 $idfile = $myOptList{"ilist"} if($myOptList{"ilist"} ne "");	# same as "-glist"
 $modeopt = int $myOptList{"o"} if(exists $myOptList{"o"});
+$mcod = int $myOptList{"mcod"} if(exists $myOptList{"mcod"});
 $othr = $myOptList{"othr"} + 0 if(exists $myOptList{"othr"});
 $wbas = int $myOptList{"mind"} if(int $myOptList{"mind"}>0);
+$hardexpand = 1 if(exists $myOptList{"hardex"});
+
+$modeopt = 0 if($hardexpand>0);
 
 # my $fpat = shift @myGlobList;
 
@@ -157,6 +168,7 @@ foreach my $xarg (@myGlobList){
   while(<HAND>){
    chomp;
    ($scor,$code,$path,$patq,$hple,$qple,$hlen,$qlen,$hh,$qq,$ev) = split/\t/;
+   next if($code>$mcod);
    my $ecur = $ethr*(300/$qlen)**$q300;
    next if($ev>$ecur);
    next if($ilst{$hh} eq "" and $idfile ne "");
@@ -186,7 +198,7 @@ sub process_protein
  my $rdat = shift;
  
 #---	priority list --------------------------------------
- @$rdat = sort {$b<=>$a} @$rdat;				# sort by score
+ @$rdat = sort {my @adat = split/\t/,$a; my @bdat = split/\t/,$b; return $bdat[0]<=>$adat[0] unless($bdat[0]==$adat[0]); return $adat[1]<=>$bdat[1] unless($adat[1]==$bdat[1]); return $bdat[4]<=>$adat[4]} @$rdat;				# sort by score
 
 #---	init by the top hit --------------------------------
  my @paok = ();
@@ -220,16 +232,37 @@ sub process_protein
  }
 
 #---	reconcile expand smooth ----------------------------
- my @pnew = ();
- $wbas = -1 if($modeopt==1);					# expand, not smooth
+ my $noexpand = 0;
+ while(1){
+  my @pnew = ();
+  $wbas = -1 if($modeopt==1);					# expand, not smooth
  
- blast_reconcile_paths(\@paok,\@pnew,$hlen,$wbas,$dquo);
+  blast_reconcile_paths(\@paok,\@pnew,$hlen,$wbas,$dquo,$hardexpand,$noexpand);
+
+  $noexpand = 1;
+ 
+  for(my $i=0;$i<@paok;$i++){
+   my ($scor,$code,$path,$patq,$hple,$qple,$hlen,$qlen,$hh,$qq,$ev) = split/\t/,$paok[$i];
+   my $hpln = YIW::blast::path_length($pnew[$i]);
+   $paok[$i] = join "\t",($scor,$code,$pnew[$i],$patq,$hpln,$qple,$hlen,$qlen,$hh,$qq,$ev)
+  }
+  @paok = sort {my @adat = split/\t/,$a; my @bdat = split/\t/,$b; return $adat[2]<=>$bdat[2]} @paok;
+
+  my $omax = 0; 
+  for(my $i=1;$i<@paok;$i++){
+   my ($scox,$codx,$patx) = split/\t/,$paok[$i-1];
+   my ($scoy,$cody,$paty) = split/\t/,$paok[$i];
+   my $over = YIW::blast::calc_path_overlap($patx,$paty);
+   $omax = $over if($over>$omax);
+  }
+  	#printf STDERR "MAX OVER = %d\n",$omax;
+  last if($omax==0);
+ }
 
 #---	print paths ----------------------------------------
  for(my $i=0;$i<@paok;$i++){
   my ($scor,$code,$path,$patq,$hple,$qple,$hlen,$qlen,$hh,$qq,$ev) = split/\t/,$paok[$i];
-  my $hpln = YIW::blast::path_length($pnew[$i]);
-  printf "%s\n",(join "\t",($scor,$code,$pnew[$i],$patq,$hpln,$qple,$hlen,$qlen,$hh,$qq,$ev));
+  printf "%s\n",$paok[$i] if($hple>0 and $qple>0);
  }
 }
 

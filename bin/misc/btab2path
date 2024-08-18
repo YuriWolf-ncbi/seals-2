@@ -1,4 +1,4 @@
-#!/usr/bin/perl5.16
+#!/usr/bin/perl
 
 ############################################################
 #	Template:	1.5, August 09, 2018
@@ -48,6 +48,7 @@ my $wbas = 60;
 my $dquo = 0.5;
 
 my $fraw = 0;
+my $fpl1 = 0;
 
 ############################################################
 #	Global variables
@@ -85,6 +86,8 @@ Options:
 	-mind=n		min domain length (default $wbas)
 
 	-raw		no overlap correction (default resolve)
+
+	-p1		add 1 to all coordinates (for MMSEQS2)
 EOINPUT
 
 ############################################################
@@ -124,6 +127,7 @@ $cthr = $myOptList{"cthr"} + 0 if(exists $myOptList{"cthr"});
 $gmax = int $myOptList{"lgap"} if(int $myOptList{"lgap"}>0);
 $wbas = int $myOptList{"mind"} if(int $myOptList{"mind"}>0);
 $fraw = 1 if(exists $myOptList{"raw"});
+$fpl1 = 1 if(exists $myOptList{"p1"});
 
 my $fbla = shift @myGlobList;
 
@@ -150,7 +154,7 @@ my $fbla = shift @myGlobList;
 my %hits = ();
 my %xlen = ();
 
-blast_read_btab($fbla,$ethr,0,$idwrd+0,\%hits,\%xlen,$q300);
+blast_read_btab($fbla,$ethr,0,$idwrd+0,\%hits,\%xlen,$q300,$fpl1);
 
 	#foreach my $qqhh (sort keys %hits){
 	# my $rhit = $hits{$qqhh};
