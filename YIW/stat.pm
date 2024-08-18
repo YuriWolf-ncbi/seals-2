@@ -13,9 +13,9 @@ BEGIN {
 # Inherit from Exporter to export functions and variables
 	our @ISA = qw(Exporter);
 # Functions and variables which are exported by default
-	our @EXPORT = qw(permute_array array2quant corr_pearson array2rank array2var array2entropy find_index density_norm_s density_norm kernel_smooth_xy window_smooth_xy rand_normal rand_exp rand_poisson);
+	our @EXPORT = qw(permute_array array2quant corr_pearson array2rank array2var array2entropy array2simpson find_index density_norm_s density_norm cdf_norm_s z_norm_s kernel_smooth_xy window_smooth_xy rand_normal rand_exp rand_poisson);
 # Functions and variables which can be optionally exported
-	our @EXPORT_OK = qw();
+	our @EXPORT_OK = qw(array2wqprep array2wquant array2smoothmax distr_bhattacharyya_coeff distr_bhattacharyya_distance distr_hellinger_distance distr_earthmover_distance contingency_f1 contingency_p4 data2auc);
 }
 
 ############################################################
@@ -25,14 +25,27 @@ BEGIN {
 #	array2rank($rarr,$ndat,$rran)
 #	array2var($rarr,$ndat)
 #	array2entropy($rarr,$ndat)
+#	array2simpson($rdat,$ndat)
 #	find_index($rpro,$xxxx)
 #	density_norm_s(x)
 #	density_norm(x,m,s)
+#	cdf_norm_s($zz)
+#	z_norm_s($pp)
 #	kernel_smooth_xy($rarx,$rary,$roux,$rouy,$nout,$band)
 #	window_smooth_xy($rarx,$rary,$roux,$rouy,$step,$wind,$post)
 #	rand_normal($mm,$ss)
 #	rand_exp($ll)
 #	rand_poisson($ll)
+#	YIW::stat::array2wqprep($rarr,$rwei,$ndat,$rval,$rwsu)
+#	YIW::stat::array2wquant($rval,$rwsu,$quan)
+#	YIW::stat::array2smoothmax($rarr,$ndat,$alpha)
+#	YIW::stat::distr_bhattacharyya_coeff($rda1,$rda2,$ndat,$step)
+#	YIW::stat::distr_bhattacharyya_distance($bhat,$DMAX)
+#	YIW::stat::distr_hellinger_distance($bhat)
+#	YIW::stat::distr_earthmover_distance($rda1,$rda2,$ndat,$flag)
+#	YIW::stat::contingency_f1($xpp,$xpn,$xnp,$xnn,$beta)
+#	YIW::stat::contingency_p4($xpp,$xpn,$xnp,$xnn)
+#	YIW::stat::data2auc($rar1,$rar2)
 ############################################################
 
 my $Pi =  3.141592653589793;
@@ -44,6 +57,7 @@ return 1;
 #	permute_array($rarr)
 ############################################################
 # "proper" permutation according to Knuth
+# https://en.wikipedia.org/wiki/Fisher–Yates_shuffle
 sub permute_array
 {
  my $rarr = shift;
@@ -76,6 +90,56 @@ sub array2quant
  my $indi = int($indr);
  return $$rarr[$indi] if($indi<$indr);
  return ($$rarr[$indi-1]+$$rarr[$indi])/2;
+}
+
+############################################################
+#	array2wqprep($rarr,$rwei,$ndat,$rval,$rwsu)
+############################################################
+# prepare to calculate
+# quantile of an arbitrary numerical array with non-negative weights
+sub array2wqprep
+{
+ my $rarr = shift;
+ my $rwei = shift;
+ my $ndat = shift;
+ my $rval = shift;
+ my $rwsu = shift;
+
+ return 0 if($ndat==0);
+ return $$rarr[0] if($ndat==1);
+
+ my %data = ();
+ for(my $i=0;$i<$ndat;$i++){ $data{$$rarr[$i]} += $$rwei[$i] if($$rwei[$i]>0);}
+ 
+ @$rval = sort{$a<=>$b} keys %data;
+
+ for(my $i=0;$i<@$rval;$i++){
+  $$rwsu[$i] = $data{$$rval[$i]};
+  $$rwsu[$i] += $$rwsu[$i-1] if($i>0);
+ }
+}
+
+############################################################
+#	array2wquant($rval,$rwsu,$quan)
+############################################################
+# quantile of an arbitrary numerical array with non-negative weights
+sub array2wquant
+{
+ my $rval = shift;
+ my $rwsu = shift;
+ my $quan = shift;
+
+ my $nval = @$rval;
+ return 0 if($nval==0);
+ return $$rval[0] if($nval==1);
+
+ my $wsum = $$rwsu[$nval-1];
+ my $qval = $wsum*$quan;
+ $qval = 0 if($qval<0);
+ $qval = $wsum if($qval>$wsum);
+
+ my $indx = find_index($rwsu,$qval);
+ return $$rval[$indx];
 }
 
 ############################################################
@@ -186,6 +250,53 @@ sub array2entropy
 }
 
 ############################################################
+#	array2simpson($rdat,$ndat)
+############################################################
+# returns Simpson index
+# https://en.wikipedia.org/wiki/Diversity_index#Inverse_Simpson_index
+# assumes arbitrary non-negative weights
+# safe re 0s
+sub array2simpson
+{
+ my $rdat = shift;
+ my $ndat = shift;
+
+ my $sn = 0;
+ my $s2 = 0;
+ for(my $i=0;$i<$ndat;$i++){
+  $sn += $$rdat[$i];
+  $s2 += $$rdat[$i]*$$rdat[$i];
+ }
+ return $s2/$sn/$sn if($sn>0);
+ return 0;
+}
+
+############################################################
+#	array2smoothmax($rarr,$ndat,$alpha)
+############################################################
+# returns smooth maximum https://en.wikipedia.org/wiki/Smooth_maximum
+# safe when exp($$rarr[$i]*$alpha) is safe
+# alpha>0 - smooth maximum
+# alpha=0 - arithmetic mean
+# alpha<0 - smooth minimum
+sub array2smoothmax
+{
+ my $rarr = shift;
+ my $ndat = shift;
+ my $alpha = shift;
+
+ return $$rarr[0] if($ndat<=0);
+ my $suma = 0; my $sumb = 0;
+ for(my $i=0;$i<$ndat;$i++){
+  my $ww = exp($$rarr[$i]*$alpha);
+  $suma += $$rarr[$i]*$ww;
+  $sumb += $ww;
+ }
+ return 0 if($sumb<=0);
+ return $suma/$sumb;
+}
+
+############################################################
 #	find_index($rpro,$xxxx)
 ############################################################
 # @$rpro is a sorted numerical array; last element >=max({$xxxx})
@@ -236,6 +347,57 @@ sub density_norm
  my $s = shift;
  
  return density_norm_s(($x-$m)/$s)/$s;
+}
+
+############################################################
+#	cdf_norm_s($zz)
+############################################################
+# cumulative distribution function for standard normal distribution
+# Numerical Recipes in Fortran 77: The Art of Scientific Computing (ISBN 0-521-43064-X), 1992, page 214, Cambridge University Press.
+# https://en.wikipedia.org/wiki/Error_function#Numerical_approximations
+sub cdf_norm_s
+{
+ my $zz = shift;
+
+ return 0 if($zz<-37);
+ return 0.5 if($zz==0);
+ return 1 if($zz>8);
+
+ my $tt = 1/(1+abs($zz)/2/sqrt(2));
+ 
+ my @qq = (-1.26551223,1.00002368,0.37409196,0.09678418,-0.18628806,0.27886807,-1.13520398,1.48851587,-0.82215223,0.17087277);
+
+ my $gg = $qq[0]+$tt*($qq[1]+$tt*($qq[2]+$tt*($qq[3]+$tt*($qq[4]+$tt*($qq[5]+$tt*($qq[6]+$tt*($qq[7]+$tt*($qq[8]+$tt*$qq[9]))))))));
+ 
+ my $tau = $tt*exp(-$zz*$zz/2+$gg);
+ 
+ if($zz<=0){ return $tau/2;}
+ else{ return 1-$tau/2;}
+}
+
+############################################################
+#	z_norm_s($pp)
+############################################################
+# inverse for standard normal distribution
+# Winitzki, Sergei (6 February 2008). "A handy approximation for the error function and its inverse"
+# https://www.academia.edu/9730974/A_handy_approximation_for_the_error_function_and_its_inverse
+# https://en.wikipedia.org/wiki/Error_function#Numerical_approximations
+sub z_norm_s
+{
+ my $pp = shift;
+
+ return -38 if($pp<=0);
+ return 0 if($pp==0.5);
+ return 9 if($pp>=1);
+
+ my $lx = log(4)+log($pp)+log(1-$pp);
+ 
+ my $aa = 0.147;
+ my $vx = 2/$Pi/$aa + $lx/2;
+ my $s1 = $vx*$vx - $lx/$aa; $s1 = 0 if($s1<0);
+ my $s2 = sqrt($s1) - $vx; $s2 = 0 if($s2<0);
+ my $ee = sqrt($s2); $ee = -$ee if($pp<0.5);
+ return $ee*sqrt(2);
 }
 
 ############################################################
@@ -455,4 +617,265 @@ sub rand_poisson
  }
 
  return $kk;
+}
+
+############################################################
+#	YIW::stat::distr_bhattacharyya_coeff($rda1,$rda2,$ndat,$step)
+############################################################
+# takes two 1:1 arrays of probability densities
+# with points, separated by the given step
+# set step=1 for arrays of probability masses in 1:1 bins
+# https://en.wikipedia.org/wiki/Bhattacharyya_distance
+sub distr_bhattacharyya_coeff
+{
+ my $rda1 = shift;
+ my $rda2 = shift;
+ my $ndat = shift;
+ my $step = shift;
+
+ my $bhat = 0;
+ my $sum1 = 0;
+ my $sum2 = 0;
+ for(my $i=0;$i<$ndat;$i++){
+  my $prod = $$rda1[$i]*$$rda2[$i];
+  next if($prod<0);
+  $sum1 += $$rda1[$i];
+  $sum2 += $$rda2[$i];
+  $bhat += sqrt($prod);
+ }
+ $bhat /= $sum1 if($sum1>0);
+ $bhat /= $sum2 if($sum2>0);
+ $bhat /= $step;
+ $bhat = 0 if($bhat<0);
+ $bhat = 1 if($bhat>1);
+ return $bhat;
+}
+
+############################################################
+#	YIW::stat::distr_bhattacharyya_distance($bhat,$DMAX)
+############################################################
+# takes Bhattacharyya coefficient
+# range [0..DMAX]
+# https://en.wikipedia.org/wiki/Bhattacharyya_distance
+sub distr_bhattacharyya_distance
+{
+ my $bhat = shift;
+ my $DMAX = shift;
+
+ return 0 if($bhat>=1);
+ $DMAX = 12 if($DMAX<=0);
+ return $DMAX if($bhat<exp(-$DMAX));
+ return -log($bhat);
+}
+
+############################################################
+#	YIW::stat::distr_hellinger_distance($bhat)
+############################################################
+# takes Bhattacharyya coefficient
+# range [0..1]
+# https://en.wikipedia.org/wiki/Hellinger_distance
+sub distr_hellinger_distance
+{
+ my $bhat = shift;
+
+ return 0 if($bhat>=1);
+ return 1 if($bhat<=0);
+ return sqrt(1-$bhat);
+}
+
+############################################################
+#	YIW::stat::distr_earthmover_distance($rda1,$rda2,$ndat,$flag)
+############################################################
+# takes two arrays of probability masses in 1:1 bins
+# flag>0 to force normalization
+# range [0..inf] ; -1 if wrong data
+# https://en.wikipedia.org/wiki/Earth_mover%27s_distance
+sub distr_earthmover_distance
+{
+ my $rda1 = shift;
+ my $rda2 = shift;
+ my $ndat = shift;
+ my $flag = shift;
+
+ if($flag>0){
+  my $sum1 = 0;
+  my $sum2 = 0;
+  for(my $i=0;$i<$ndat;$i++){
+   return -1 if($$rda1[$i-1]<0 or $$rda2[$i-1]<0);
+   $sum1 += $$rda1[$i] if($$rda1[$i]>0);
+   $sum2 += $$rda2[$i] if($$rda2[$i]>0);
+  }
+  return -1 if($sum1<=0 or $sum2<=0);
+  for(my $i=0;$i<$ndat;$i++){
+   $$rda1[$i] /= $sum1;
+   $$rda2[$i] /= $sum2;
+  }
+ }
+ my $ecur = 0;
+ my $esum = 0;
+ for(my $i=1;$i<$ndat;$i++){
+  return -1 if($$rda1[$i-1]<0 or $$rda2[$i-1]<0);
+  $ecur += $$rda1[$i-1] - $$rda2[$i-1];
+  $esum += abs($ecur);
+ }
+ return $esum;
+}
+
+############################################################
+#	YIW::stat::contingency_f1($xpp,$xpn,$xnp,$xnn,$beta)
+############################################################
+# $xpp = TP
+# $xpn = FN
+# $xnp = FP
+# $xnn = TN
+# assumes non-negative counts or weights, non-degenerate
+# $beta > 0; default 1;
+# https://en.wikipedia.org/wiki/F-score
+sub contingency_f1
+{
+ my $xpp = shift;
+ my $xpn = shift;
+ my $xnp = shift;
+ my $xnn = shift;
+ my $beta = shift;
+
+ $beta = 1 if($beta<=0);
+ 
+ return 0 if($xpp<0 or $xpn<0 or $xnp<0 or $xnn<0 or $xpp+$xpn+$xnp<=0);
+ return (1+$beta*$beta)*$xpp/((1+$beta*$beta)*$xpp+$beta*$beta*$xpn+$xnp);
+}
+
+############################################################
+#	YIW::stat::contingency_p4($xpp,$xpn,$xnp,$xnn)
+############################################################
+# $xpp = TP
+# $xpn = FN
+# $xnp = FP
+# $xnn = TN
+# assumes non-negative counts or weights, non-degenerate
+# https://en.wikipedia.org/wiki/P4-metric
+sub contingency_p4
+{
+ my $xpp = shift;
+ my $xpn = shift;
+ my $xnp = shift;
+ my $xnn = shift;
+
+ my $de = 4*$xpp*$xnn + ($xpp+$xnn)*($xpn+$xnp);
+ 
+ return 0 if($xpp<0 or $xpn<0 or $xnp<0 or $xnn<0 or $de<=0);
+ return 4*$xpp*$xnn/$de;
+}
+
+############################################################
+#	YIW::stat::data2auc($rar1,$rar2,$stat)
+############################################################
+# 2 arrays of numerical values; "positive" and "negative" scores
+# computes Mann–Whitney z-score if stat>0
+# returns (AUC,z-score)
+# https://en.wikipedia.org/wiki/Mann–Whitney_U_test
+sub data2auc
+{
+ my $rar1 = shift;
+ my $rar2 = shift;
+ my $stat = shift;
+
+ my $n1 = @$rar1;
+ my $n2 = @$rar2;
+
+ my @data = (@$rar1,@$rar2);
+ my @datr = ();
+ array2rank(\@data,$n1+$n2,\@datr);
+
+ my $r1 = 0;
+ for(my $i=0;$i<$n1;$i++){
+  $r1 += $datr[$i+0];
+ }
+ my $r2 = 0;
+ for(my $i=0;$i<$n2;$i++){
+  $r2 += $datr[$i+$n1];
+ }
+ my $u1 = $n1*$n2 - $r1 + $n1*($n1+1)/2;
+ my $auc1 = 1; $auc1 = 0 if($n1<=0); $auc1 = $u1/$n1/$n2 if($n1>0 and $n2>0);
+ my $zz = 0;
+
+ return ($auc1,$zz) if($stat<=0 or $n1+$n2<=1);
+
+ my %dcnt = ();
+ for(my $i=0;$i<@data;$i++){ $dcnt{$data[$i]}++;}
+ my $tt = 0;
+ foreach my $xx (keys %dcnt){
+  my $nn = $dcnt{$xx};
+  $tt += $nn*($nn*$nn-1) if($nn>1);
+ }
+ my $sd = $n1*$n2/12*($n1+$n2+1-$tt/($n1+$n2)/($n1+$n2-1));
+ if($sd>0){ $sd = sqrt($sd);}
+ 
+ $zz = ($u1 - $n1*$n2/2)/$sd if($sd>0);
+ return ($auc1,$zz);
+}
+
+############################################################
+#	YIW::stat::data2pBruMun($rar1,$rar2,$nper)
+############################################################
+# UNREASONABLY SLOW
+# 2 arrays of numerical values; "positive" and "negative" scores
+# uses nper permtations to compute Brunner Munzel Test p-value
+# returns (probability,p-value)
+# https://en.wikipedia.org/wiki/Brunner_Munzel_Test
+sub data2pBruMun
+{
+ my $rar1 = shift;
+ my $rar2 = shift;
+ my $nper = shift;
+
+ my $n1 = @$rar1;
+ my $n2 = @$rar2;
+
+ return (0.5,0.5) if($n1<1 or $n2<1 or $n1+$n2<=2 or $nper<2);
+ 
+ my $nn = $n1 + $n2;
+ my @data = (@$rar1,@$rar2);
+
+ my $pp = prob_array_diff(\@data,$n1,$n2);
+ 
+ my $cnt = 0;
+ for(my $i=0;$i<$nper;$i++){
+  permute_array(\@data);
+  my $px = prob_array_diff(\@data,$n1,$n2);
+  $cnt++ if($px>$pp);
+  $cnt+= 0.5 if($px==$pp);
+ }
+
+ return ($pp,$cnt/$nper);
+}
+
+############################################################
+#	YIW::stat::prob_array_diff($rarr,$n1,$n2)
+############################################################
+sub prob_array_diff
+{
+ my $rarr = shift;
+ my $n1 = shift;
+ my $n2 = shift;
+
+ return 0.5 if($n1<1 or $n2<1 or $n1+$n2<=2);
+
+ my $s1 = min($n1,1000);
+ my $s2 = min($n2,1000);
+
+ my $pp = 0;
+
+ for(my $i=0;$i<$s1;$i++){
+  my $idx1 = ($s1==$n1)?$i:int(rand($n1));
+  my $v1 = $$rarr[$idx1];
+  for(my $j=0;$j<$s2;$j++){
+   my $idx2 = ($s2==$n2)?$j:int(rand($n2));
+   my $v2 = $$rarr[$idx2+$n1];
+   $pp++ if($v1>$v2);
+   $pp+= 0.5 if($v1==$v2);
+  }
+ }
+ 
+ return $pp/($s1*$s2);
 }

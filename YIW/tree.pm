@@ -31,25 +31,28 @@ return 1;
 #	clean_tree($rnod,$tag1,tag2,...)
 #	label_tree($rnod,$modl)
 #		to "lab"
-#		0 - PHYLIP, 1 - PAML, 2 - COUNT, 3 - HIGGS
+#		0 - PHYLIP, 1 - PAML, 2 - COUNT, 3 - HIGGS, 4 - PHYLIP+leaves
 #	copy_tree($rfro)
 #	list_tree_nodes($rnod,$rlin,$rlle)
 #	process_treenames($rnod,$word)
 #	tree_leaf_sets($rnod)
 #		to "snod"
+#	tree_height($rnod)
+#		to "high"
 #	tree_collect_tbl($rnod,$wadd)
-#		to "tbl","add"
+#		uses "high"
+#		to "tbl"
 #	tree_ultra($rnod)
 #		to "l", "tbl" and "deep"
 #	tree_rescale($rnod,$quot)
 #		to "l", "tbl" and "deep"
-#	tree_height($rnod)
-#		to "high"
 #	tree_weight($rnod,$wsum,$wadd)
 #		to "high", "tbl", "add", "wt"
+#		to "avhi", "neff" at the root
+#		wsum==0 to eff. no. of leaves
 #	tree_hortonorder($rnod)
 #		to "hord"
-#	tree_ladderize($rnod)
+#	tree_ladderize($rnod,$dont)
 #		to "nlea"
 #	tree_prune($root,$xtag)
 #		starts with $rnod{$xtag}>=0 at leaves; propagates $xtag through the tree; changes root; prunes untagged clades
@@ -339,6 +342,10 @@ sub label_tree
   label_leaves_rec($rnod,\$lcnt,1);
   $ncnt = $lcnt;
   label_nodre_rec($rnod,\$ncnt);
+ }elsif($modl==4){		# PHYLIP+leaves mode
+  label_nodes_rec($rnod,\$ncnt);
+  $lcnt = $ncnt;
+  label_leaves_rec($rnod,\$lcnt,1);
  }else{				# PHYLIP mode
   label_nodes_rec($rnod,\$ncnt);
   label_leaves_rec($rnod,\$lcnt,1);
@@ -626,8 +633,24 @@ sub tree_weight
  tree_height($rnod);
  
  my $tble = tree_collect_tbl($rnod,$wadd);
+ 
+ my $wxxx = $wsum;
+ $wxxx = 100 if($wsum<=0);
 
- tree_collect_wt($rnod,$wsum);
+ tree_collect_wt($rnod,$wxxx);
+ 
+ my $hsum = 0; tree_collect_sumheight($rnod,\$hsum);
+ my $have = 0; $have = $hsum/$wxxx;
+ my $neff = 1; $neff = $$rnod{"tbl"}/$have if($$rnod{"tbl"}>0 and $have>0);
+  
+ $$rnod{"avhi"} = $have;
+ $$rnod{"neff"} = $neff;
+
+ if($wsum<=0){
+  my $quot = 1; $quot = $neff/$wxxx;
+  tree_rescale_wt($rnod,$quot);
+ }
+
 }
 
 ############################################################
@@ -652,6 +675,43 @@ sub tree_collect_wt
   my $rden = $$rdes[$i];				# i-th descendant
   my $desw = $nodw*($$rnod{"l"}+$$rden{"l"}+$$rden{"tbl"})/$sumx;
   tree_collect_wt($$rdes[$i],$desw);
+ }
+}
+
+############################################################
+#	tree_collect_sumheight($rnod,$rsum)
+############################################################
+sub tree_collect_sumheight
+{
+ my $rnod = shift;
+ my $rsum = shift;
+ 
+ my $rdes = $$rnod{"d"};			# descendants
+ 
+ if(@$rdes==0){					# leaf
+  $$rsum += $$rnod{"high"}*$$rnod{"wt"};
+  return;
+ }
+ 
+ for(my $i=0;$i<@$rdes;$i++){			# scan descendants
+  tree_collect_sumheight($$rdes[$i],$rsum);
+ }
+}
+
+############################################################
+#	tree_rescale_wt($rnod,$quot)
+############################################################
+sub tree_rescale_wt
+{
+ my $rnod = shift;
+ my $quot = shift;
+ 
+ $$rnod{"wt"} *= $quot;				# rescale
+
+ my $rdes = $$rnod{"d"};			# descendants
+
+ for(my $i=0;$i<@$rdes;$i++){			# scan descendants
+  tree_rescale_wt($$rdes[$i],$quot);
  }
 }
 
@@ -684,11 +744,13 @@ sub tree_hortonorder
 }
 
 ############################################################
-#	tree_ladderize($rnod)
+#	tree_ladderize($rnod,$dont)
 ############################################################
+# just count if $dont!=0
 sub tree_ladderize
 {
  my $rnod = shift;
+ my $dont = shift;
 
  my $rdes = $$rnod{"d"};			# descendants
  
@@ -704,7 +766,7 @@ sub tree_ladderize
   $nlea += $nn;
  }
 
- @$rdes = sort sort_nodes_nlea @$rdes;
+ @$rdes = sort sort_nodes_nlea @$rdes if($dont==0);
 
  $$rnod{"nlea"} = $nlea;
  return $$rnod{"nlea"};

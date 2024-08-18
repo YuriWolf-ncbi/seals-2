@@ -15,9 +15,9 @@ BEGIN {
 # Inherit from Exporter to export functions and variables
 	our @ISA = qw(Exporter);
 # Functions and variables which are exported by default
-	our @EXPORT = qw(blast_read_btab blast_process_hits blast_expand_footptint blast_smooth_path blast_reconcile_paths);
+	our @EXPORT = qw(blast_read_btab blast_process_hits blast_expand_footptint blast_smooth_path blast_reconcile_paths blast_process_nthits);
 # Functions and variables which can be optionally exported
-	our @EXPORT_OK = qw(calc_overlap calc_path_overlap path_length clear_subject_hits);
+	our @EXPORT_OK = qw(calc_overlap calc_path_overlap path_length clear_subject_hits aggregate_ranges);
 }
 
 my $delim = "[/|]";
@@ -28,19 +28,26 @@ my $VERYLONG = 1e10;
 return 1;
 
 ############################################################
-#	blast_read_btab($fnam,$ethr,$qwrd,$hwrd,$rdat,$rlen)
+#	blast_read_btab($fnam,$ethr,$qwrd,$hwrd,$rdat,$rlen,$q300,$fpl1)
 #	blast_process_hits($qq,$hh,$ql,$hl,$rhit,$othr,$wbas,$dquo,$cthr,$gmax,$fraw)
 #	blast_expand_footptint($patq,$path,$ql,$hl)
 #	blast_smooth_path($path,$sl,$wbas,$dquo)
-#	blast_reconcile_paths($rpat,$rnew,$lpro,$wbas,$dquo)
+#	blast_reconcile_paths($rpat,$rnew,$lpro,$wbas,$dquo,$hardexpand,$doexpand)
+#	YIW::blast::calc_overlap($xb,$xe,$yb,$ye)
+#	YIW::blast::calc_path_overlap($patx,$paty)
+#	YIW::blast::path_length($path)
+#	YIW::blast::clear_subject_hits($rhit,$path,$othr)
+#	blast_process_nthits($ql,$hl,$rhit,$orth,$oath)
+#	YIW::blast::aggregate_ranges($rori,$ragg)
 ############################################################
 
 ############################################################
-#	blast_read_btab($fnam,$ethr,$qwrd,$hwrd,$rdat,$rlen,$q300)
+#	blast_read_btab($fnam,$ethr,$qwrd,$hwrd,$rdat,$rlen,$q300,$fpl1)
 ############################################################
 # assumes -outfmt "7 qseqid sseqid qlen slen qstart qend sstart send evalue bitscore"
 # puts arrays of hits for query-subject tab-delimited pairs into %$rdat as
 #	$ss,$qb,$qe,$hb,$he,$ev
+# $fpl1 increments all coordinates (MMSEQS2)
 # puts query and subject lengths into %$rlen
 sub blast_read_btab
 {
@@ -51,6 +58,7 @@ sub blast_read_btab
  my $rdat = shift;
  my $rlen = shift;
  my $q300 = shift;
+ my $fpl1 = shift;
 
  open HAND,"<$fnam" or die "Can't read \"$fnam\"";
  while(<HAND>){
@@ -60,6 +68,7 @@ sub blast_read_btab
   next if($ss<=0 or $ql<=0);
   my $elim = $ethr; $elim *= (300/$ql)**$q300 if($q300>0);
   next if($ev>$elim);
+  if($fpl1){ $qb++; $qe++; $hb++; $he++;}
   $ev = $LOEVAL if($ev<$LOEVAL);
   my $qid = $qq;
   $qid = (split /$delim/,$qq)[$qwrd-1] if($qwrd>0 and $qq=~m/$delim/);
@@ -80,6 +89,7 @@ sub blast_read_btab
 ############################################################
 # reads array of hits for query-subject pair as read by blast_read_btab()
 #	$ss,$qb,$qe,$hb,$he,$ev
+# sorts @$rhit by score
 # returns ($scor,$code,$patq,$path,$qple,$hple,$eval) array
 # segmented paths are segmented in both query and subject
 sub blast_process_hits
@@ -169,7 +179,7 @@ sub find_best_path
 }
 
 ############################################################
-#	calc_overlap($xb,$xe,$yb,$ye)
+#	YIW::blast::calc_overlap($xb,$xe,$yb,$ye)
 ############################################################
 sub calc_overlap
 {
@@ -201,7 +211,7 @@ sub calc_compatibility
 }
 
 ############################################################
-#	calc_path_overlap($patx,$paty)
+#	YIW::blast::calc_path_overlap($patx,$paty)
 ############################################################
 sub calc_path_overlap
 {
@@ -408,7 +418,7 @@ sub assemble_paths
 }
 
 ############################################################
-#	path_length($path)
+#	YIW::blast::path_length($path)
 ############################################################
 sub path_length
 {
@@ -596,7 +606,7 @@ my $xwin = min($wbas,$sl*$dquo);
 }
 
 ############################################################
-#	clear_subject_hits($rhit,$path,$othr)
+#	YIW::blast::clear_subject_hits($rhit,$path,$othr)
 ############################################################
 # reads array of hits for query-subject pair as read by blast_read_btab()
 #	$ss,$qb,$qe,$hb,$he
@@ -621,13 +631,15 @@ sub clear_subject_hits
 }
 
 ############################################################
-#	blast_reconcile_paths($rpat,$rnew,$lpro,$wbas,$dquo)
+#	blast_reconcile_paths($rpat,$rnew,$lpro,$wbas,$dquo,$hardexpand,$noexpand)
 ############################################################
 # reads list of compatible raw paths for a particular subject
 #	$scor,$code,$path,$patq,$hple,$qple,$hlen,$qlen,$hh,$qq,$ev
 # produces paths expanded by query and/or smoothed
 #	new paths are in $$rnew[$i] corresponding to the $$rpat[$i]
 # set $wbas<0 for expand only
+# set $hardexpand>0 to expand class 2 and 3 paths
+# set $noexpand>0 to never expand paths
 sub blast_reconcile_paths
 {
  my $rpat = shift;
@@ -635,6 +647,9 @@ sub blast_reconcile_paths
  my $lpro = shift;
  my $wbas = shift;
  my $dquo = shift;
+ my $hardexpand = shift;
+ my $noexpand = shift;
+
 
 #---	expand paths; collect segments ---------------------
  my @lfra = ();
@@ -644,7 +659,7 @@ sub blast_reconcile_paths
    	#printf STDERR "===\t%d\n",$i;
    	#printf STDERR "%d\t%s\t%s\n",$i,$path,$patq;
   my $patn = $path;
-  $patn = blast_expand_footptint($patq,$path,$ql,$hl) if($cx<=1);
+  $patn = blast_expand_footptint($patq,$path,$ql,$hl) if(($noexpand<=0) and ($cx<=1 or $hardexpand));
    	#printf STDERR "%d\t%s\t%s\n",$i,$path,$patn;
   my @lfrp = split/=/,$path;
   my @lfrn = split/=/,$patn;
@@ -665,7 +680,7 @@ sub blast_reconcile_paths
  my @dpat = ();
  for(my $i=0;$i<@$rpat;$i++){
   my ($sx,$cx,$path,$patq,$plen,$pleq) = split/\t/,$$rpat[$i];
-  $dpat[$i] = $sx/min($plen,$pleq);
+  my $minl = min($plen,$pleq);  $dpat[$i] = $sx/$minl if($minl>0);
  }
 
 #---	gaps and conflicts ---------------------------------
@@ -750,3 +765,126 @@ sub blast_reconcile_paths
   $$rnew[$i] = $pats;
  }
 }
+
+############################################################
+#	blast_process_nthits($ql,$hl,$rhit,$orth,$oath)
+############################################################
+# reads array of hits for query-subject pair as read by blast_read_btab()
+#	$ss,$qb,$qe,$hb,$he,$ev
+# sorts @$rhit by score
+# in @$rhit regularizes ($qb,$qe) and ($hb,$he) pairs; adds ($qdir,$hdir)
+# returns ($scor,$patq,$path,$qple,$hple) array
+# paths are comma-delimited
+# paths are unresolved w.r.t. conflicts, ignore alignable compatibility, possibly inverted
+# segmented paths are segmented in both query and subject
+sub blast_process_nthits
+{
+ my $ql = shift;
+ my $hl = shift;
+ my $rhit = shift;
+ my $orth = shift;
+ my $oath = shift;
+
+#---	recode strand --------------------------------------
+ for(my $i=0;$i<@$rhit;$i++){
+  my ($ss,$qb,$qe,$hb,$he,$ev) = split/\t/,$$rhit[$i];
+  my $qdir = 1;
+  if($qb>$qe){
+   my $tmp = $qb; $qb = $qe; $qe = $tmp;
+   $qdir = -1;
+  }
+  my $hdir = 1;
+  if($hb>$he){
+   my $tmp = $hb; $hb = $he; $he = $tmp;
+   $hdir = -1;
+  }
+  $$rhit[$i] = join "\t",($ss,$qb,$qe,$hb,$he,$ev,$qdir,$hdir);
+ }
+
+#---	sort by score --------------------------------------
+ @$rhit = sort {$b<=>$a} @$rhit;
+
+#---	greedily process hits ------------------------------
+ my @lhit = ();
+ for(my $i=0;$i<@$rhit;$i++){
+  my ($ssx,$qbx,$qex,$hbx,$hex) = split/\t/,$$rhit[$i];
+  my $lqx = $qex - $qbx + 1;
+  my $lhx = $hex - $hbx + 1;
+  my $good = 1;
+  for(my $j=0;$j<@lhit;$j++){
+   my ($ssy,$qby,$qey,$hby,$hey) = split/\t/,$lhit[$j];
+   my $lqy = $qey - $qby + 1;
+   my $lhy = $hey - $hby + 1;
+   my $ovq = calc_overlap($qbx,$qex,$qby,$qey);
+   if($ovq/min($lqx,$lqy)>$orth or $ovq>$oath){
+    $good = 0; last;
+   }
+   my $ovh = calc_overlap($hbx,$hex,$hby,$hey);
+   if($ovh/min($lhx,$lhy)>$orth or $ovh>$oath){
+    $good = 0; last;
+   }
+  }
+  next unless($good);
+  push @lhit,$$rhit[$i];
+ }
+
+#---	sort by position -----------------------------------
+ for(my $i=0;$i<@lhit;$i++){
+  my ($ss,$qb,$qe,$hb,$he,$ev,$qdir,$sdir) = split/\t/,$lhit[$i];
+  $lhit[$i] = join "\t",($qb,$qe,$hb,$he,$ev,$ss,$qdir,$sdir);
+ }
+ @lhit = sort {$a<=>$b} @lhit;
+
+#---	make paths and score -------------------------------
+ my $ssco = 0;
+ my $qpat = ""; my $qpal = 0;
+ my $hpat = ""; my $hpal = 0;
+ for(my $i=0;$i<@lhit;$i++){
+  my ($qb,$qe,$hb,$he,$ev,$ss,$qdir,$hdir) = split/\t/,$lhit[$i];
+  my $lq = $qe - $qb + 1;
+  $qpal += $lq;
+  my $qseg = ($qdir>0)?($qb."-".$qe):($qe."-".$qb);
+  $qpat .= "," if($qpat ne "");
+  $qpat .= $qseg;
+  my $lh = $he - $hb + 1;
+  $hpal += $lh;
+  my $hseg = ($hdir>0)?($hb."-".$he):($he."-".$hb);
+  $hpat .= "," if($hpat ne "");
+  $hpat .= $hseg;
+  $ssco += $ss;
+ }
+ $qpal = $ql if($qpal>$ql);
+ $hpal = $hl if($hpal>$hl);
+
+#---	return ---------------------------------------------
+ return ($ssco,$qpat,$hpat,$qpal,$hpal);
+}
+
+############################################################
+#	YIW::blast::aggregate_ranges($rori,$ragg)
+############################################################
+# reads an array of tab-delimited footprints p1,p2 (p1<=p2)
+# sorts the original array
+# merges overlapping footprints
+# returns sorted array of non-overlapping footprints
+sub aggregate_ranges
+{
+ my $rori = shift;
+ my $ragg = shift;
+
+ @$rori = sort {$a<=>$b} @$rori;			# sort query ranges
+ 
+ push @$ragg,$$rori[0];					# 1st always
+ for(my $i=1;$i<@$rori;$i++){				# from 2nd
+  my $nmap = @$ragg;
+  my ($p1,$p2) = split/\t/,$$ragg[$nmap-1];
+  my ($q1,$q2) = split/\t/,$$rori[$i];
+  if($q1-$p2<=1){						# overlap or adjacent, expand
+   $p2 = max($p2,$q2);
+   $$ragg[$nmap-1] = $p1."\t".$p2;
+  }else{							# no overlap, new range
+   push @$ragg,$$rori[$i];
+  }
+ }
+}
+

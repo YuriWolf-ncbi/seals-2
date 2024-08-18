@@ -118,7 +118,7 @@ sub my_args
  
  foreach my $arg (split/\t/,$cmdl){
   my ($opt) = ($arg =~ m/^-(\w+)/);
-  my ($val) = ($arg =~ m/^-\S+=(.*)/);
+  my ($val) = ($arg =~ m/^-\S+?=(.*)/);
   if($opt ne ""){
    $myOptList{$opt} = $val;
   }else{
