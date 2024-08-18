@@ -1,0 +1,205 @@
+#!/usr/bin/perl
+
+############################################################
+#	Template:	1.5, August 09, 2018
+#	Parent Path:	/home/wolf/bin on frosty
+############################################################
+
+############################################################
+#	System etc
+############################################################
+use lib "/home/wolf/perl5/lib/perl5";
+use YIW::basic;
+# uncomment the next line if better randomness is important
+# use Math::Random::MT qw/rand srand/;
+use Digest::MD5 qw/md5_hex/;
+
+our $Pver = "0.1";
+our $Pdat = "Xxx 00 2021";
+
+our ($Pnam) = ($0 =~ m/([^\/]+)$/);
+our ($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
+
+our $Ppid = $$;	# Process ID
+our $Base = "tmp.$Pnam.$Ppid";
+{
+ my ($host) = ($ENV{"HOSTNAME"} =~ m/^(\w+)/);
+ my $salt = sprintf ".%s.%03d",$host,int(rand(1000));
+ $Base .= $salt;
+}
+our $CMD = "";
+our $DEBUG = 0;
+our $VERBOSE = 1;
+our $DOIT = 1;
+our $EXITCODE = 0;
+
+############################################################
+#	Definitions
+############################################################
+$dpro = "";
+$dpmm = "";
+$idwrd = 0;
+$delim = "[ ,;:|]";
+
+############################################################
+#	Global variables
+############################################################
+
+############################################################
+#	Instructions etc
+############################################################
+$Instructions = <<EOINPUT;
+
+$Path/$Pnam $Pver, $Pdat
+
+Use: $Pnam query.faa -d=profiledir -m=profiledb [options]
+
+Finds footprints of the best profile in the DB on amino acid sequences.
+
+Profile directory contains aligned <name>.FASTA files with consensus sequences on top.
+
+Profile DB is made from the same alignments.
+
+Options:
+
+	-d=profiledir	profile directory (MANDATORY!)
+
+	-m=profiledb	profile DB (MANDATORY!)
+EOINPUT
+
+############################################################
+#	code start
+############################################################
+
+#---	get and process arguments --------------------------
+YIW::basic::my_args(\@ARGV,1);					# pass 0 to block STDIN
+!@myGlobList and print $Instructions and exit 0;
+
+if(exists $myOptList{"DEBUG"}){ 					# hidden common option
+ $DEBUG = 1;
+ $VERBOSE = 0x7fff;
+}
+$VERBOSE = int $myOptList{"VERB"} if(exists $myOptList{"VERB"});	# hidden common option
+$DOIT = 0 if(exists $myOptList{"IDLE"});				# hidden common option
+$Base = $myOptList{"BASE"} if($myOptList{"BASE"} ne "");		# hidden common option
+
+# examples for using options:
+# $opts = 1 if(exists $myOptList{"q"});				# on/off
+# $opti = int $myOptList{"i"} if(int $myOptList{"i"}>0);	# positive integer
+# $opti = int $myOptList{"i"} if(exists $myOptList{"i"});	# any integer <- string
+# $optr = $myOptList{"x"} + 0 if($myOptList{"x"}>0);		# positive real
+# $optl = $myOptList{"l"} if($myOptList{"l"} ne "");		# non-empty string
+# $optx = "0" if($optx==0);					# to be passed in command line
+$dpro = $myOptList{"dir"} if($myOptList{"dir"} ne "");			# hidden alternative
+$dpro = $myOptList{"d"} if($myOptList{"d"} ne "");
+$dpmm = $myOptList{"db"} if($myOptList{"db"} ne "");			# hidden alternative
+$dpmm = $myOptList{"m"} if($myOptList{"m"} ne "");
+
+my $ffaa = shift @myGlobList;
+
+#---	rest of the code -----------------------------------
+# $CMD = ""; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
+#
+# foreach my $xarg (@myGlobList){
+#  my @xglo = glob $xarg;
+#  foreach my $name (@xglo){
+#  }
+# }
+#
+# print STDERR "$Pnam:\tReading $dlst/$core.$clst\n" if($VERBOSE);
+# open HAND,"<$dlst/$core.$clst" or die "$Pnam:\tCan't read \"$dlst/$core.$clst\"";
+# while(<HAND>){
+#  chomp;
+# }
+# close HAND;
+# printf STDERR "$Pnam:\t\t%s\tgenomes\n",int_commify(scalar @glist) if($VERBOSE);
+#
+# log_this_point($Pnam,"$Pnam\t$Ppid","started") if($VERBOSE>1);
+
+#---	prep -----------------------------------------------
+my $Bdir = YIW::basic::tempdir_make_safe("mmap");
+
+#---	search ---------------------------------------------
+$CMD = "run_mmsearch $ffaa -fasta -d= $dpmm -s=7.5 > $Bdir/tmp.tab"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
+
+#---	read table -----------------------------------------
+my %q2sc = ();
+my %q2pr = ();
+print STDERR "$Pnam:\tReading $Bdir/tmp.tab\n" if($VERBOSE);
+open HAND,"<$Bdir/tmp.tab" or die "$Pnam:\tCan't read \"$Bdir/tmp.tab\"";
+while(<HAND>){
+ chomp;
+ next if(m/^\#/);
+ my ($qq,$hh,$ql,$hl,$qb,$qe,$hb,$he,$ev,$ss) = split/\t/;
+ if($ss>$q2sc{$qq}){ $q2sc{$qq} = $ss; $q2pr{$qq} = $hh;}
+}
+close HAND;
+printf STDERR "$Pnam:\t\t%s\tqueries\n",int_commify(scalar keys %q2pr) if($VERBOSE);
+
+#---	cycle FASTA ----------------------------------------
+my $def = ""; my $seq = "";
+print STDERR "$Pnam:\tReading $ffaa\n" if($VERBOSE);
+open HAND,"<$ffaa" or die "$Pnam:\tCan't read \"$ffaa\"";
+while(<HAND>){
+ chomp;
+ if(m/^>/){
+  my $ddd = substr $_,1;
+  process_sequence(\$seq,\$def) if($seq ne "" and $def ne "");
+  $def = $ddd; $seq = "";
+  next;
+ }
+ $seq .= $_;
+}
+close HAND;
+process_sequence(\$seq,\$def) if($seq ne "" and $def ne "");
+
+#---	clean ----------------------------------------------
+# unlink <$Base.*> unless($DEBUG);
+unless($DEBUG){
+ $CMD = "rm -r $Bdir"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
+}
+
+############################################################
+#	process_sequence($rseq,$rdef)
+############################################################
+sub process_sequence
+{
+ my $rseq = shift;
+ my $rdef = shift;
+
+ $$rseq =~ tr/ \t//d;
+
+ my ($id) = split/\s+/,$$rdef;
+ $id = (split/$delim/,$id)[$idwrd-1] if($idwrd>0);
+ my $xv = substr(md5_hex($id),0,4);
+ my $prof = $q2pr{$id};
+ return if($prof eq "");
+
+#---	save sequence --------------------------------------
+ open HANX,">$Bdir/tmp.$xv.faa" or die "$Pnam:\tCan't write \"$Bdir/tmp.$xv.faa\"";
+ print HANX ">".$id."\n".$$rseq."\n";
+ close HANX;
+ 
+#---	run HHALIGN ----------------------------------------
+ $CMD = "run_hhalign $Bdir/tmp.$xv.faa $dpro/$prof.FASTA -fast1 -fast2 -cons1 -cons2 -o= $Bdir/tmp.$xv.txt > /dev/null"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE>1); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
+ $CMD = "hhres2btab $Bdir/tmp.$xv.txt > $Bdir/tmp.$xv.tab"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE>1); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
+
+#---	read output ----------------------------------------
+ my $p1 = 0; my $p2 = 0;
+ print STDERR "$Pnam:\tReading $Bdir/tmp.$xv.tab\n" if($VERBOSE>1);
+ open HANX,"<$Bdir/tmp.$xv.tab" or die "$Pnam:\tCan't read \"$Bdir/tmp.$xv.tab\"";
+ while(<HANX>){
+  chomp;
+  next if(m/^\#/);
+  my ($qq,$hh,$ql,$hl,$qb,$qe,$hb,$he,$ev,$ss) = split/\t/;
+  $p1 = $qb; $p2 = $qe;
+  last;
+ }
+ close HANX;
+
+#---	fragment -------------------------------------------
+ printf "%s\t%s\t%d-%d\t%s\n",$id,$prof,$p1,$p2,substr($$rseq,$p1-1,$p2-$p1+1);
+
+#---	clean ----------------------------------------------
+ unlink <$Bdir/tmp.$xv.*> unless($DEBUG);
+}
