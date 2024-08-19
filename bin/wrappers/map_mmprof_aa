@@ -8,15 +8,14 @@
 ############################################################
 #	System etc
 ############################################################
-#use lib "/home/wolf/perl5/lib/perl5";
-use lib $ENV{'PERL_LIB_PATH'};
+use lib "/home/wolf/perl5/lib/perl5";
 use YIW::basic;
 # uncomment the next line if better randomness is important
 # use Math::Random::MT qw/rand srand/;
 use Digest::MD5 qw/md5_hex/;
 
-our $Pver = "0.1";
-our $Pdat = "August 18 2024";
+our $Pver = "0.2";
+our $Pdat = "August 19 2024";
 
 our ($Pnam) = ($0 =~ m/([^\/]+)$/);
 our ($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
@@ -42,6 +41,7 @@ $dpmm = "";
 $eval = 100;
 $idwrd = 0;
 $delim = "[ ,;:|]";
+$sgemin = 0x7fffffff;
 
 ############################################################
 #	Global variables
@@ -69,6 +69,8 @@ Options:
 	-m=profiledb	mmseqs profile DB (MANDATORY!)
 
 	-e=evalue	mmseqs search evalue limit (default $eval)
+
+	-sge=n		run on SGE if the number of jobs>=n (default $sgemin)
 EOINPUT
 
 ############################################################
@@ -99,6 +101,7 @@ $dpro = $myOptList{"d"} if($myOptList{"d"} ne "");
 $dpmm = $myOptList{"db"} if($myOptList{"db"} ne "");			# hidden alternative
 $dpmm = $myOptList{"m"} if($myOptList{"m"} ne "");
 $eval = $myOptList{"e"} + 0 if($myOptList{"e"}>0);
+$sgemin = int $myOptList{"sge"} if(int $myOptList{"sge"}>0);
 
 my $ffaa = shift @myGlobList;
 
@@ -142,70 +145,76 @@ while(<HAND>){
 close HAND;
 printf STDERR "$Pnam:\t\t%s\tqueries have hits\n",int_commify(scalar keys %q2pr) if($VERBOSE);
 
-#---	cycle FASTA ----------------------------------------
-my $def = ""; my $seq = "";
-print STDERR "$Pnam:\tReading $ffaa\n" if($VERBOSE);
-open HAND,"<$ffaa" or die "$Pnam:\tCan't read \"$ffaa\"";
+#---	prep aa db -----------------------------------------
+$CMD = "fake_gi $ffaa -b=1 -p='yiw_id_' | makeblastdb -in - -title $ffaa -dbtype prot -parse_seqids -out $Bdir/tmp.db > /dev/null"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
+$CMD = "blastdbcmd -db $Bdir/tmp.db -entry all -outfmt '%a %t' | nemp -r='^(\\S+)\\s+(\\S+)' > $Bdir/tmp.id.tab"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
+
+#---	prep output dir ------------------------------------
+mkdir "$Bdir/out";
+
+#---	read table, prepare command ------------------------
+my %if2o = ();
+open HANX,">$Bdir/tmp.cmd.lst" or die "$Pnam:\tCan't write \"$Bdir/tmp.cmd.lst\"";
+print STDERR "$Pnam:\tReading $Bdir/tmp.id.tab\n" if($VERBOSE);
+open HAND,"<$Bdir/tmp.id.tab" or die "$Pnam:\tCan't read \"$Bdir/tmp.id.tab\"";
 while(<HAND>){
  chomp;
- if(m/^>/){
-  my $ddd = substr $_,1;
-  process_sequence(\$seq,\$def) if($seq ne "" and $def ne "");
-  $def = $ddd; $seq = "";
-  next;
- }
- $seq .= $_;
+ my ($ff,$id) = split/\t/;
+ my $prof = $q2pr{$id};
+ next if($prof eq "");
+ $if2o{$ff} = $id;
+ print HANX "blastdbcmd -db $Bdir/tmp.db -entry $ff > $Bdir/tmp.$ff.faa ; run_hhalign $Bdir/tmp.$ff.faa $dpro/$prof.FASTA -fast1 -fast2 -cons1 -cons2 -o= $Bdir/tmp.$ff.txt > /dev/null ; hhres2btab $Bdir/tmp.$ff.txt -VERB=0 > $Bdir/out/tmp.$ff.tab ; rm $Bdir/tmp.$ff.*\n";
 }
 close HAND;
-process_sequence(\$seq,\$def) if($seq ne "" and $def ne "");
+printf STDERR "$Pnam:\t\t%s\tqueries to process\n",int_commify(scalar keys %if2o) if($VERBOSE);
+close HANX;
+
+#---	run commands ---------------------------------------
+my $njob = scalar keys %if2o;
+if($njob<$sgemin){
+ $CMD = "chmod a+x $Bdir/tmp.cmd.lst ; $Bdir/tmp.cmd.lst"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
+}else{
+ $CMD = "submitSGEfarm $Bdir/tmp.cmd.lst -bt=-4 -rand -work=2"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
+}
+
+#---	read output, prepare ffr ---------------------------
+my %q2fr = ();
+open HANX,">$Bdir/tmp.ffr" or die "$Pnam:\tCan't write \"$Bdir/tmp.ffr\"";
+print STDERR "$Pnam:\tReading $Bdir/out/*\n" if($VERBOSE);
+foreach my $ff (keys %if2o){
+ open HAND,"<$Bdir/out/tmp.$ff.tab" or die "$Pnam:\tCan't read \"$Bdir/out/tmp.$ff.tab\"";
+ while(<HAND>){
+  chomp;
+  next if(m/^\#/);
+  my ($qq,$hh,$ql,$hl,$qb,$qe,$hb,$he,$ev,$ss) = split/\t/;
+  next if($qq ne $ff);
+  $fr = $qb."-".$qe;
+  $q2fr{$ff} = $fr;
+  print HANX "$ff:$fr\n";
+ }
+ close HAND;
+}
+printf STDERR "$Pnam:\t\t%s\tqueries aligned\n",int_commify(scalar keys %q2fr) if($VERBOSE);
+close HANX;
+
+#---	fragments ------------------------------------------
+$CMD = "nemp $Bdir/tmp.ffr -r='^(\\S+):' | blastdbcmd -db  $Bdir/tmp.db -entry_batch - | fa2frag -f= $Bdir/tmp.ffr -w=0 | fa2sr -w=0 > $Bdir/tmp.sr"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
+
+#---	output ---------------------------------------------
+print STDERR "$Pnam:\tReading $Bdir/tmp.sr\n" if($VERBOSE);
+open HAND,"<$Bdir/tmp.sr" or die "$Pnam:\tCan't read \"$Bdir/tmp.sr\"";
+while(<HAND>){
+ chomp;
+ my ($ff,$sq) = split/\t/;
+ my $fr = $q2fr{$ff};
+ my $id = $if2o{$ff};
+ my $prof = $q2pr{$id};
+ print "$id\t$fr\t$prof\t$sq\n";
+}
+close HAND;
 
 #---	clean ----------------------------------------------
 # unlink <$Base.*> unless($DEBUG);
 unless($DEBUG){
  $CMD = "rm -r $Bdir"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
-}
-
-############################################################
-#	process_sequence($rseq,$rdef)
-############################################################
-sub process_sequence
-{
- my $rseq = shift;
- my $rdef = shift;
-
- $$rseq =~ tr/ \t//d;
-
- my ($id) = split/\s+/,$$rdef;
- $id = (split/$delim/,$id)[$idwrd-1] if($idwrd>0);
- my $xv = substr(md5_hex($id),0,4);
- my $prof = $q2pr{$id};
- return if($prof eq "");
-
-#---	save sequence --------------------------------------
- open HANX,">$Bdir/tmp.$xv.faa" or die "$Pnam:\tCan't write \"$Bdir/tmp.$xv.faa\"";
- print HANX ">".$id."\n".$$rseq."\n";
- close HANX;
- 
-#---	run HHALIGN ----------------------------------------
- $CMD = "run_hhalign $Bdir/tmp.$xv.faa $dpro/$prof.FASTA -fast1 -fast2 -cons1 -cons2 -o= $Bdir/tmp.$xv.txt > /dev/null"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE>1); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
- $CMD = "hhres2btab $Bdir/tmp.$xv.txt > $Bdir/tmp.$xv.tab"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE>1); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
-
-#---	read output ----------------------------------------
- my $p1 = 0; my $p2 = 0;
- print STDERR "$Pnam:\tReading $Bdir/tmp.$xv.tab\n" if($VERBOSE>1);
- open HANX,"<$Bdir/tmp.$xv.tab" or die "$Pnam:\tCan't read \"$Bdir/tmp.$xv.tab\"";
- while(<HANX>){
-  chomp;
-  next if(m/^\#/);
-  my ($qq,$hh,$ql,$hl,$qb,$qe,$hb,$he,$ev,$ss) = split/\t/;
-  $p1 = $qb; $p2 = $qe;
-  last;
- }
- close HANX;
-
-#---	fragment -------------------------------------------
- printf "%s\t%d-%d\t%s\t%s\n",$id,$p1,$p2,$prof,substr($$rseq,$p1-1,$p2-$p1+1);
-
-#---	clean ----------------------------------------------
- unlink <$Bdir/tmp.$xv.*> unless($DEBUG);
 }
