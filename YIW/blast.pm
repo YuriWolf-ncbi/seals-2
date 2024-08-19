@@ -5,7 +5,8 @@ package YIW::blast;
 ############################################################
 use strict;
 #use warnings;
-use lib "/home/wolf/perl5/lib/perl5";
+#use lib "/home/wolf/perl5/lib/perl5";
+use lib $ENV{'PERL_LIB_PATH'};
 use YIW::basic;
 
 BEGIN {
