@@ -163,7 +163,7 @@ while(<HAND>){
  my $prof = $q2pr{$id};
  next if($prof eq "");
  $if2o{$ff} = $id;
- print HANX "blastdbcmd -db $Bdir/tmp.db -entry $ff > $Bdir/tmp.$ff.faa ; run_hhalign $Bdir/tmp.$ff.faa $dpro/$prof.FASTA -fast1 -fast2 -cons1 -cons2 -o= $Bdir/tmp.$ff.txt > /dev/null ; hhres2btab $Bdir/tmp.$ff.txt -VERB=0 > $Bdir/out/tmp.$ff.tab ; rm $Bdir/tmp.$ff.*\n";
+ print HANX "blastdbcmd -db $Bdir/tmp.db -entry $ff > $Bdir/tmp.$ff.faa ; hhalign -i $Bdir/tmp.$ff.faa -t $dpro/$prof.FASTA -glob -id 100 -diff inf -M first -v 0 -o $Bdir/tmp.$ff.txt > /dev/null ; hhres2btab $Bdir/tmp.$ff.txt -VERB=0 > $Bdir/out/tmp.$ff.tab ; rm $Bdir/tmp.$ff.*\n";
 }
 close HAND;
 printf STDERR "$Pnam:\t\t%s\tqueries to process\n",int_commify(scalar keys %if2o) if($VERBOSE);
