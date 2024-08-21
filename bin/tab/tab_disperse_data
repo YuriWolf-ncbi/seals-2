@@ -8,15 +8,14 @@
 ############################################################
 #	System etc
 ############################################################
-#use lib "/home/wolf/perl5/lib/perl5";
-use lib $ENV{'PERL_LIB_PATH'};
+use lib "/home/wolf/perl5/lib/perl5";
 use YIW::basic;
 # uncomment the next line if better randomness is important
 # use Math::Random::MT qw/rand srand/;
 use Digest::MD5 qw/md5_hex/;
 
-our $Pver = "0.1";
-our $Pdat = "Xxx 00 2020";
+our $Pver = "0.2";
+our $Pdat = "August 21 2024";
 
 our ($Pnam) = ($0 =~ m/([^\/]+)$/);
 our ($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
@@ -39,6 +38,7 @@ our $EXITCODE = 0;
 ############################################################
 my $kk = 1;
 my $nn = 1;
+my $batch = 0;
 my $fout = "data";
 my $sout = "tab";
 my $nbuf = 32768;
@@ -67,6 +67,8 @@ Options:
 	-k=n		use column n as the key (default $kk)
 
 	-x=n		take n hex characters from digest (default $nn)
+
+	-bt=n		randomly disperse into n batches (default use key)
 
 	-n=name		output file name (default $fout)
 
@@ -108,6 +110,7 @@ if((lc $Base) eq "safe"){						# slow but safe
 # $optx = "0" if($optx==0);					# to be passed in command line
 $kk = int $myOptList{"k"} if(int $myOptList{"k"}>0);
 $nn = int $myOptList{"x"} if(int $myOptList{"x"}>0 and int $myOptList{"x"}<=32);
+$batch = int $myOptList{"bt"} if(int $myOptList{"bt"}>0);
 $fout = $myOptList{"n"} if($myOptList{"n"} ne "");
 $sout = $myOptList{"s"} if($myOptList{"s"} ne "");
 $nbuf = int $myOptList{"b"} if(int $myOptList{"b"}>0);
@@ -144,9 +147,14 @@ foreach my $xarg (@myGlobList){
   while(<HAND>){
    chomp;
    next if(m/^#/ and $mcom==0);
-   my @data = split/\t/;
-   my $hv = md5_hex($data[$kk-1]);
-   my $xv = substr($hv,0,$nn);
+   my $xv = 1;
+   if($batch>0){
+    $xv = 1 + int(rand($batch));
+   }else{
+    my @data = split/\t/;
+    my $hv = md5_hex($data[$kk-1]);
+    $xv = substr($hv,0,$nn);
+   }
    	#printf "%s\t%s\t[%s]\n",$xv,$hv,$data[$kk-1];
    if($lbuf{$xv} eq ""){ my @tmp = (); $lbuf{$xv} = \@tmp;}
    my $rbuf = $lbuf{$xv};
