@@ -8,8 +8,8 @@
 ############################################################
 #	System etc
 ############################################################
-$Pver = "0.5";
-$Pdat = "March 29 2020";
+$Pver = "0.6";
+$Pdat = "August 24 2024";
 
 ($Pnam) = ($0 =~ m/([^\/]+)$/);
 ($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
@@ -24,6 +24,8 @@ $nmode = 0;
 $lmin = 16;
 $idwrd = 2;
 $delim = "[ ,;:|]";
+$upper = 0;
+
 ############################################################
 #	Code
 ############################################################
@@ -190,6 +192,8 @@ Options:
 			3 - "ID_frN" (N=1..6)
 
 	-w=n		use n-th word of ID (default $idwrd; 0 - all)
+
+	-u		uppercase the translated sequence (default lowercase start codons)
 EOINPUT
 
 ############################################################
@@ -207,6 +211,7 @@ $lmin = $myOptList{"l"} if($myOptList{"l"}>0);
 $pmode = $myOptList{"m"} if(exists $myOptList{"m"});
 $nmode = $myOptList{"n"} if(exists $myOptList{"n"});
 $idwrd = $myOptList{"w"} if(exists $myOptList{"w"});
+$upper = 1 if(exists $myOptList{"u"});
 
 if($code<=0){
  foreach my $cc (sort {$a<=>$b} keys %codenm){
@@ -334,6 +339,7 @@ sub print_results
    my $frax = $fram; $frax = 3 - $fram if($fram<0);
    $name = "$sqid"."_fr".$frax." ".$name;
   }
+  $$rtra = uc $$rtra if($upper);
   print ">$name\n$$rtra\n";
  }
 }
