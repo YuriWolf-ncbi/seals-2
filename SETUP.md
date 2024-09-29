@@ -12,3 +12,5 @@ E.g. with bash:
 Place the scripts in `bin/` directories into a location, included in `PATH` environment variable.
 
 If your system does not have Perl at `/usr/bin/perl`, edit the path in the shebang line of all scripts to point to the available Perl binary.
+
+Run the script without any parameters to get usage comments and options; watch for "Requirements" section; install components as necessary.
