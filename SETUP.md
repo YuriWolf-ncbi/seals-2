@@ -1,4 +1,4 @@
-# seals-2
+# seals-2 setup
 Make (or select) a specific directory `%libdir%` for a local Perl library.
 
 Place the `YIW/` directory with its content in `%libdir%` (e.g. `~/perl5/lib/YIW`).
