@@ -9,7 +9,7 @@ in columns \## 1, 2 and 12 (`-outfmt 6` in BLAST command line).
 
 `prot_tax.tab` of the following tab-delimited format:
 ```
-subject taxon
+subject_id taxon
 ```
 in columns \## 1 and 2.
 ### Command:
