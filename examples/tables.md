@@ -33,7 +33,7 @@ tab_select cog-24.cog.csv -t= chromosome.lst -k1=1 -s1=',' | sort -k 1,1 -k 5,5n
 
 tab_merge chromosome.lst -t= tmp.tab -blank=1
 ```
-first will select antries for the given list of genes in `chromosome.lst` from `cog-24.cog.csv`, sort entries for each protein in order of the orthology domains within the gene, make a (tab-delimited) table where each `gene_id` corresponds to a comma-separated list of `cog_id` to `tmp.tab`, then prints out the available COG assignments in the chromosome order (adding blanks to column \# 2 for genes without COG assignments).
+first will select antries for the given list of genes in `chromosome.lst` from `cog-24.cog.csv`, sort entries for each gene in order of the orthology domains within the gene, print out a (tab-delimited) table where each `gene_id` corresponds to a comma-separated list of `cog_id` to `tmp.tab`, then prints out the available COG assignments in the chromosome order (adding blanks to column \# 2 for genes without COG assignments).
 
 ## COG functional categories in Asgard Archaea
 ### Source data (https://ftp.ncbi.nlm.nih.gov/pub/COG/COG2024/data/):
@@ -58,4 +58,4 @@ tab_select cog-24.org.csv -k1=4 -s1=',' -r='^ASGARD' > tmp.lst
 
 tab_select cog-24.cog.csv -t= tmp.lst -k1=2 -s1=',' -k2=1 -s2=',' | tab_shuffle -l='1,2,7' -s=',' | sort -u | tab_shuffle -l=3 | tab_merge -t= cog-24.def.tab -k1=1 -k2=1 | tab_regexp -k=2 -r='s/^(.).+/\1/' | tab_aggr -k1=2 | sort
 ```
-first will make a list of ASGARDARCHAEOTA genomes from `cog-24.org.csv` to `tmp.lst`, then select a subset of COG assignments for these genomes from `cog-24.cog.csv`, trim each line to (tab-delimited) `gene_id genome_id cog_id`, make this list unique to collapse multiple occurrence of the same orthologous domain within the same gene, extract `cog_id`, add COG info from `cog-24.def.tab`, trim the functional category (column \# 2) to the single (primary) category, then count the number of functional category occurrences across all genomes and print out the sorted list of functional category counts.
+first will print out a list of ASGARDARCHAEOTA genomes from `cog-24.org.csv` to `tmp.lst`, then select a subset of COG assignments for these genomes from `cog-24.cog.csv`, trim each line to (tab-delimited) `gene_id genome_id cog_id`, make this list unique to collapse multiple occurrence of the same orthologous domain within the same gene, extract `cog_id`, add COG info from `cog-24.def.tab`, trim the functional category (column \# 2) to the single (primary) category, then count the number of functional category occurrences across all genomes and print out the sorted list of functional category counts.
