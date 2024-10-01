@@ -38,7 +38,7 @@ creates a tab-delimited table containing `gene_id genome_id|gene_id`.
 ```
 tree_rename genfam.tre -t= tmp.tab > tmp.tre
 ```
-prints out the tree in Newick format with species names, prefixed to the leaves.
+prints out the tree in Newick format with genome IDs, prefixed to the leaves.
 ```
 tree_dismember tmp.tre -w=1 -s='\|' -n= subfam > subfam.lst
 ```
