@@ -1,0 +1,173 @@
+#!/usr/bin/perl
+
+############################################################
+#	Template:	0.3, November 04 2004
+#	Parent Path:	/net/gloin/export/home/wolf/bin/???
+############################################################
+
+############################################################
+#	System etc
+############################################################
+$Pver = "0.3";
+$Pdat = "December 01 2017";
+
+($Pnam) = ($0 =~ m/([^\/]+)$/);
+($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
+
+$Ppid = $$;	# Process ID
+############################################################
+#	Definitions
+############################################################
+$icom = 0;
+$addt = 0;
+$ldelim = "\t";
+$jdelim = "\t";
+$stok = "2,1";
+$form = "";
+
+############################################################
+#	Global variables
+############################################################
+@ltok; %xtok;
+
+############################################################
+#	Instructions etc
+############################################################
+$Instructions = <<EOINPUT;
+
+$Path/$Pnam $Pver, $Pdat
+
+Use: $Pnam source-table [options]
+
+Reshuffles source-table according to the token list.
+
+Options:
+
+	-l=list		new order of tokens (default \"$stok\") e.g.:
+			\"1,3,2\"
+			\"2,1,2,1,2,3\"
+			\"n,1,2,3\" (\"n\" is line number)
+
+	-f=format	Perl sprintf-format string; overrides -j;
+			must match the list of tokens
+
+	-tail		add the rest of the tokens
+
+	-comm=n		lines starting with \"\#\" (default - pass through)
+			1 - skip
+			2 - treat as normal
+
+	-s=\"delim\"	delimiters to split line (default \"\\t\")
+
+	-j=\"delim\"	delimiter to join line (default \"\\t\")
+EOINPUT
+
+############################################################
+#	code start
+############################################################
+
+#---	get and process arguments --------------------------
+my_args(@ARGV);
+-t STDIN and !@myGlobList and print $Instructions and exit 0;
+push @myGlobList,"-" unless(-t STDIN);
+
+$stok = $myOptList{"l"} if($myOptList{"l"} ne "");
+$form = $myOptList{"f"} if($myOptList{"f"} ne "");
+$icom = int $myOptList{"comm"} if(int $myOptList{"comm"}>0);
+$addt = 1 if(exists $myOptList{"tail"});
+$ldelim = $myOptList{"s"} if($myOptList{"s"} ne "");
+$jdelim = $myOptList{"j"} if($myOptList{"j"} ne "");
+
+#---	preprocess token list ------------------------------
+foreach my $nn (split/,/,$stok){
+ die "Bad token \"$nn\" in the list \"$stok\"" if($nn ne "n" and int($nn)<=0);
+ push @ltok,$nn;
+ $xtok{$nn} = 1;
+}
+	#printf STDERR "[%s]\n",(join ",",@ltok);
+
+#---	preprocess format ----------------------------------
+if($form ne ""){
+ $form .= "\n" ;
+ $form = eval qq{ "$form" };
+}
+
+#---	read the source table ------------------------------
+my $lnum = 0;
+foreach my $fmas (@myGlobList){
+ #print STDERR "$Pnam:\tReading $fmas\n";
+ open HAND,"<$fmas" or die "Can't read \"$fmas\"";
+ while(<HAND>){
+  chomp;
+  if(m/^\#/){ print "$_\n" if($icom==0); next if($icom<2);}
+  $lnum++;
+  my @token = split/$ldelim/;
+  my @tonew = ();
+  for(my $i=0;$i<@ltok;$i++){
+   if($ltok[$i]>0){ push @tonew,$token[$ltok[$i]-1];}
+   elsif($ltok[$i] eq "n"){ push @tonew,$lnum;}
+  }
+  if($addt){
+   for(my $i=0;$i<@token;$i++){
+    next if($xtok{$i+1});
+    push @tonew,$token[$i];
+   }
+  }
+  if($form eq ""){				# regular
+   printf "%s\n",(join $jdelim,@tonew);
+  }else{					# formatted
+   printf $form,@tonew;
+   #my $string = sprintf $form,@tonew; print eval qq{ "$string" };
+   #my $forx = eval qq{ "$form" };
+   #my $string = sprintf $forx,@tonew; print $string;
+  }
+ }
+ close HAND;
+}
+
+############################################################
+#	max min
+############################################################
+sub max
+{
+ my $max = shift;
+ while(@_){
+  my $x = shift;
+  $max = $x if($x>$max);
+ }
+ return $max;
+}
+
+sub min
+{
+ my $min = shift;
+ while(@_){
+  my $x = shift;
+  $min = $x if($x<$min);
+ }
+ return $min;
+}
+
+
+############################################################
+#	my_args
+############################################################
+sub my_args
+{
+ my $nop = scalar @_;
+ for($i=0;$i<$nop;$i++){
+  if($_[$i]=~m/^-[^=]+=$/){
+   my $new = $_[$i].$_[$i+1];
+   splice @_,$i,2,$new;
+  }
+ }
+ foreach my $arg (@_){
+  my ($opt) = ($arg =~ m/^-(\w+)/);
+  my ($val) = ($arg =~ m/^-\w+=(.*)/);
+  if($opt){
+   $myOptList{$opt} = $val;
+  }else{
+   push @myGlobList,$arg;
+  }
+ }
+}

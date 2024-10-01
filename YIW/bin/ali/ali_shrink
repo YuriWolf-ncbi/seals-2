@@ -1,0 +1,130 @@
+#!/usr/bin/perl
+
+############################################################
+#	Template:	0.3, November 04 2004
+#	Parent Path:	/net/gloin/export/home/wolf/bin/???
+############################################################
+
+############################################################
+#	System etc
+############################################################
+$Pver = "0.2";
+$Pdat = "December 04 2020";
+
+($Pnam) = ($0 =~ m/([^\/]+)$/);
+($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
+
+$Ppid = $$;	# Process ID
+$Base = "tmp.$Pnam.$Ppid";
+############################################################
+#	Definitions
+############################################################
+$madd = 0;
+$trim = 0;
+
+############################################################
+#	Global variables
+############################################################
+
+############################################################
+#	Instructions etc
+############################################################
+$Instructions = <<EOINPUT;
+
+$Path/$Pnam $Pver, $Pdat
+
+Use: $Pnam srfile [options]
+
+Reads alignment in seqrows; collapses it accoriding to the map positions.
+Map is the 1st sequence; alphanumeric characters designate positive
+positions.
+
+Options:
+
+	-map		add the collapsed map to the output
+
+	-trim		collapse ends only
+EOINPUT
+
+############################################################
+#	code start
+############################################################
+
+#---	get and process arguments --------------------------
+my_args(@ARGV);
+-t STDIN and !@myGlobList and print $Instructions and exit 0;
+push @myGlobList,"-" unless(-t STDIN);
+
+$madd = 1 if(exists $myOptList{"map"});
+$trim = 1 if(exists $myOptList{"trim"});
+
+$name = shift @myGlobList;
+
+my $smap = "";
+open HAND,"<$name" or die "Can't read \"$name\"";
+while(<HAND>){
+ chomp;
+ my ($nam,$seq) = split/\s+/;
+ if($smap eq ""){
+  $smap = $seq;
+  if($trim){
+   my($s1,$s2,$s3) = ($smap =~ m/^(\W*)(\w.+\w)(\W*)$/);
+   $s2 =~ tr/0-9a-zA-Z_/X/;$s2 =~ tr/0-9a-zA-Z_/Y/c;
+   $smap = $s1.$s2.$s3;
+  }
+  $smap =~ tr/0-9a-zA-Z_/\377/;
+  $smap =~ tr/\377/\000/c;
+  next unless($madd);
+ }
+ $seq &= $smap;
+ $seq =~ tr/\000//d;
+ print "$nam\t$seq\n";
+}
+close HAND;
+
+############################################################
+#	max min
+############################################################
+sub max
+{
+ my $max = shift;
+ while(@_){
+  my $x = shift;
+  $max = $x if($x>$max);
+ }
+ return $max;
+}
+
+sub min
+{
+ my $min = shift;
+ while(@_){
+  my $x = shift;
+  $min = $x if($x<$min);
+ }
+ return $min;
+}
+
+
+############################################################
+#	my_args
+############################################################
+sub my_args
+{
+ my $nop = scalar @_;
+ for($i=0;$i<$nop;$i++){
+  if($_[$i]=~m/^-[^=]+=$/){
+   my $new = $_[$i].$_[$i+1];
+   splice @_,$i,2,$new;
+  }
+ }
+ foreach my $arg (@_){
+  my ($opt) = ($arg =~ m/^-(\w+)/);
+  my ($val) = ($arg =~ m/^-\w+=(.*)/);
+  if($opt){
+   $myOptList{$opt} = $val;
+  }else{
+   push @myGlobList,$arg;
+  }
+ }
+}

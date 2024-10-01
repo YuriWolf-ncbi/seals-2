@@ -1,0 +1,346 @@
+#!/usr/bin/perl
+
+############################################################
+#	Template:	0.3, November 04 2004
+#	Parent Path:	/net/gloin/export/home/wolf/bin/???
+############################################################
+
+############################################################
+#	System etc
+############################################################
+$Pver = "0.5";
+$Pdat = "Mar 27 2012";
+
+($Pnam) = ($0 =~ m/([^\/]+)$/);
+($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
+
+$PID = $$;	# Process ID
+############################################################
+#	Definitions
+############################################################
+#
+# based on http://en.wikipedia.org/wiki/Kernel_density_estimation
+#
+# Parzen E. (1962). On estimation of a probability density function and mode, Ann. Math. Stat. 33, pp. 1065-1076.
+#
+# kernel is gaussian
+#
+############################################################
+$fdat = 1;
+$icom = 1;
+$dlog = 0;
+$cumu = 0;
+$bypo = 0;
+$hard = 0;
+$ldelim = "\\s+";
+$dnam = "";
+$xmin = -1e+300;
+$xmax = 1e+300;
+$fpset = "";
+
+$nstep = 100;
+$noutL = 5;
+$noutR = 5;
+$noutX = 5;
+$mzero = 0;
+$fband = 2.0;
+$fpdf0 = 0.05;
+$GAUSS = 1.0/sqrt(2*3.1415927);
+
+############################################################
+#	Global variables
+############################################################
+@arra;
+
+############################################################
+#	Instructions etc
+############################################################
+$Instructions = <<EOINPUT;
+
+$Path/$Pnam $Pver, $Pdat
+
+Use: $Pnam name [options]
+
+Returns kernel-estimated p.d.f. on array of data:
+
+Parzen E. (1962). On estimation of a probability density function and mode, Ann. Math. Stat. 33, pp. 1065-1076.
+
+Options:
+
+	-d=n		use n-th field as the data (default $fdat)
+
+	-log		take logarithm of the data (at your own risk)
+
+	-nocomm		do NOT ignore lines starting with "#"
+
+	-s="delim"	delimiters to split line (default "$ldelim")
+
+	-n=name		print dataset name (default none)
+
+	-xlo=val	low limit on range (default by data)
+
+	-xhi=val	high limit on range (default by data)
+
+	-hard		force data into [xlo,xhi] interval
+
+	-zero		force an extra pair of points witz zero density
+
+	-p=points	number of datapoints (>=10) (default $nstep)
+			-p=1 means at each point
+
+	-pset=name	file with points to estimate p.d.f. (default by data)
+
+	-f=width	width of filtering relative to step (default $fband)
+
+	-cum		cumulative function instead of p.d.f.
+EOINPUT
+
+############################################################
+#	code start
+############################################################
+
+#---	get and process arguments --------------------------
+my_args(@ARGV);
+-t STDIN and !@myGlobList and print $Instructions and exit 0;
+push @myGlobList,"-" unless(-t STDIN);
+
+$fdat = $myOptList{"d"} if($myOptList{"d"}>0);
+$icom = 0 if(exists $myOptList{"nocomm"});
+$dlog = 1 if(exists $myOptList{"log"});
+$dnam = $myOptList{"n"} if($myOptList{"n"} ne "");
+$nstep = int($myOptList{"p"}) if($myOptList{"p"}>=10);
+$bypo = 1 if($myOptList{"p"}==1);
+$fband = $myOptList{"f"} if($myOptList{"f"}>0);
+$xmin = $myOptList{"xlo"}+0 if($myOptList{"xlo"} ne "");
+$xmax = $myOptList{"xhi"}+0 if($myOptList{"xhi"} ne "");
+$mzero = 1 if(exists $myOptList{"zero"});
+$ldelim = $myOptList{"s"} if($myOptList{"s"} ne "");
+$cumu = 1 if(exists $myOptList{"cum"});
+$hard = 1 if(exists $myOptList{"hard"});
+$fpset = $myOptList{"pset"} if($myOptList{"pset"} ne "");
+
+
+#---	read the input file --------------------------------
+foreach my $name (@myGlobList){
+ open HAND,"<$name" or die "Can't read \"$name\"";
+ while(<HAND>){
+  chomp;
+  next if(m/^\#/ and $icom);
+  my @token = split/$ldelim/;
+  push @arra,$token[$fdat-1];
+ }
+ close HAND;
+}
+
+#---	hard -----------------------------------------------
+if($hard){
+ for(my $i=0;$i<@arra;$i++){
+  $arra[$i] = $xmax if($arra[$i]>$xmax);
+  $arra[$i] = $xmin if($arra[$i]<$xmin);
+ }
+}
+
+#---	log ------------------------------------------------
+if($dlog){
+ for(my $i=0;$i<@arra;$i++){ $arra[$i] = log($arra[$i]);}
+ $xmin = log($xmin) if($xmin>-1e+300);
+ $xmax = log($xmax) if($xmax<1e+300);
+}
+
+#---	initialize -----------------------------------------
+my $nxxx = @arra;
+my $dmin = min(@arra); $dmin = min($dmin,$xmin) if($xmin>-1e+300);
+my $dmax = max(@arra); $dmax = max($dmax,$xmax) if($xmax<1e+300);
+my $step = ($dmax - $dmin)/($nstep - 1);
+my $band = $step*$fband;
+my @data = ();
+my @xpos = ();
+
+#---	compute cumulative function and go away ------------
+if($cumu>0){
+ @arra = sort {$a<=>$b} @arra;
+ for(my $i=0,my $j=0;$i<$nstep;$i++){
+  my $x = $dmin+$i*$step;
+  for(;$j<$nxxx;$j++){ last if($arra[$j]>$x);}
+  $xpos[$i] = $x;
+  $data[$i] = $j/($nxxx+1);
+	 #printf "%f\t%.3e\t%d\t%d\n",$x,$data[$i],$i,$j;
+ }
+ goto LABEL_PRINTOUT;
+}
+
+#---	compute pdf by points and go away ------------------
+if($bypo>0){
+ my %arrx = ();
+ for(my $i=0;$i<$nxxx;$i++){ $arrx{$arra[$i]+0} = 1;}
+ @xpos = sort {$a<=>$b} keys %arrx;
+ $nstep = @xpos;
+ for(my $i=0;$i<$nstep;$i++){
+  $data[$i] = pdf_kernel($xpos[$i],\@arra,$nxxx,$band);
+ }
+ goto LABEL_PRINTOUT;
+}
+
+#---	compute pdf by external points and go away ---------
+if($fpset ne ""){
+ my %arrx = ();
+ open HAND,"<$fpset" or die "Can't read \"$fpset\"";
+ while(<HAND>){
+  chomp;
+  $arrx{$_+0} = 1;
+ }
+ close HAND;
+ @xpos = sort {$a<=>$b} keys %arrx;
+ $nstep = @xpos;
+ for(my $i=0;$i<$nstep;$i++){
+  $xpos[$i] = log($xpos[$i]) if($dlog);
+  $data[$i] = pdf_kernel($xpos[$i],\@arra,$nxxx,$band);
+ }
+ goto LABEL_PRINTOUT;
+}
+
+#---	explore left ---------------------------------------
+unless($xmin>-1e+300){
+ my $pdf0 = pdf_kernel($dmin,\@arra,$nxxx,$band);
+ my $pdfx = $pdf0;
+ while($pdfx>$pdf0*$fpdf0){
+  $dmin -= $step;
+  $pdfx = pdf_kernel($dmin,\@arra,$nxxx,$band);
+ }
+}
+
+#---	explore right --------------------------------------
+unless($xmax<1e+300){
+ my $pdf0 = pdf_kernel($dmax,\@arra,$nxxx,$band);
+ my $pdfx = $pdf0;
+ while($pdfx>$pdf0*$fpdf0){
+  $dmax += $step;
+  $pdfx = pdf_kernel($dmax,\@arra,$nxxx,$band);
+ }
+}
+
+#---	correct --------------------------------------------
+$step = ($dmax - $dmin)/($nstep - 1);
+
+#---	main cycle -----------------------------------------
+for(my $i=0;$i<$nstep;$i++){
+ $xpos[$i] = $dmin+$i*$step;
+ $data[$i] = pdf_kernel($xpos[$i],\@arra,$nxxx,$band);
+}
+
+#---	adjust left ----------------------------------------
+if($xmin>-1e+300){
+ $data[0] *= 2;
+ for(my $i=1;$i<$nstep;$i++){
+  my $xmir = $dmin - $i*$step;
+  my $pdfx = pdf_kernel($xmir,\@arra,$nxxx,$band);
+  $data[$i] += $pdfx;
+  last unless($pdfx>($data[$i]-$pdfx)*$fpdf0);
+ }
+}
+
+#---	adjust right ---------------------------------------
+if($xmax<1e+300){
+ $data[$nstep-1] *= 2;
+ for(my $i=$nstep-2;$i>=0;$i--){
+  my $xmir = $dmin + (2*$nstep-$i-2)*$step;
+  my $pdfx = pdf_kernel($xmir,\@arra,$nxxx,$band);
+  $data[$i] += $pdfx;
+  last unless($pdfx>($data[$i]-$pdfx)*$fpdf0);
+ }
+}
+
+#---	print out ------------------------------------------
+LABEL_PRINTOUT:
+
+print "===\t$dnam\n" if($dnam ne "");
+
+if($mzero){
+ my $x = $xpos[0]; $x = exp($x) if($dlog);
+ printf "%f\t%d\n",$x,0;
+}
+
+for(my $i=0;$i<$nstep;$i++){
+ my $x = $xpos[$i]; $x = exp($x) if($dlog);
+ printf "%e\t%.3e\n",$x,$data[$i];
+	 #printf "%f\t%.3e\t%d\t%f\t%f\n",$x,$data[$i],$i,$step,$dmin;
+}
+
+if($mzero){
+ my $x = $xpos[$nstep-1]; $x = exp($x) if($dlog);
+ printf "%f\t%d\n",$x,($cumu<=0)?0:1;
+}
+
+############################################################
+#	pdf_kernel($xpos,$rarr,$nxxx,$band)
+############################################################
+sub pdf_kernel
+{
+ my $xpos = shift;
+ my $rarr = shift;
+ my $nxxx = shift;
+ my $band = shift;
+ 
+ my $pdf = 0;
+ for(my $i=0;$i<$nxxx;$i++){
+  $pdf += kernel(($xpos-$$rarr[$i])/$band);
+ }
+ return $pdf/$nxxx/$band;
+}
+
+############################################################
+#	kernel(x)
+############################################################
+sub kernel
+{
+ my $xxx = shift;
+ 
+ return $GAUSS*exp(-($xxx*$xxx)/2);
+}
+
+############################################################
+#	max min
+############################################################
+sub max
+{
+ my $max = shift;
+ while(@_){
+  my $x = shift;
+  $max = $x if($x>$max);
+ }
+ return $max;
+}
+
+sub min
+{
+ my $min = shift;
+ while(@_){
+  my $x = shift;
+  $min = $x if($x<$min);
+ }
+ return $min;
+}
+
+
+############################################################
+#	my_args
+############################################################
+sub my_args
+{
+ my $nop = scalar @_;
+ for($i=0;$i<$nop;$i++){
+  if($_[$i]=~m/^-[^=]+=$/){
+   my $new = $_[$i].$_[$i+1];
+   splice @_,$i,2,$new;
+  }
+ }
+ foreach my $arg (@_){
+  my ($opt) = ($arg =~ m/^-(\w+)/);
+  my ($val) = ($arg =~ m/^-\w+=(.*)/);
+  if($opt){
+   $myOptList{$opt} = $val;
+  }else{
+   push @myGlobList,$arg;
+  }
+ }
+}

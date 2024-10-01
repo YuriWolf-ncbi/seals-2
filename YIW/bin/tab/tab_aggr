@@ -1,0 +1,166 @@
+#!/usr/bin/perl
+
+############################################################
+#	Template:	0.3, November 04 2004
+#	Parent Path:	/net/gloin/export/home/wolf/bin/???
+############################################################
+
+############################################################
+#	System etc
+############################################################
+$Pver = "0.3";
+$Pdat = "July 21 2023";
+
+($Pnam) = ($0 =~ m/([^\/]+)$/);
+($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
+
+$Ppid = $$;	# Process ID
+############################################################
+#	Definitions
+############################################################
+$icom = 0;
+$addt = 0;
+$ldelim = "\t";
+$jdelim = "\t";
+$cdelim = ",";
+$k1 = 1;
+$k2 = 2;
+$kw = -1;
+$moda = 1;
+
+############################################################
+#	Global variables
+############################################################
+%ag01; %ag02; %ag04; @aggl;
+
+############################################################
+#	Instructions etc
+############################################################
+$Instructions = <<EOINPUT;
+
+$Path/$Pnam $Pver, $Pdat
+
+Use: $Pnam source-table [options]
+
+Reads the table, aggregates specified keys
+
+Options:
+
+	-m=n		key aggregation mode (default $moda)
+			0x01 - count
+			0x02 - sum
+			0x04 - concatenate
+
+	-k1=n		use n-th field as the key (default $k1)
+
+	-k2=n		use n-th field as the value (default $k2)
+
+	-kw=n		use n-th field as the weight (default no)
+
+	-comm=n		lines starting with \"\#\" (default - pass through)
+			1 - skip
+			2 - treat as normal
+
+	-s=\"delim\"	delimiters to split line (default \"\\t\")
+
+	-j=\"delim\"	delimiter to join line (default \"\\t\")
+
+	-c=\"delim\"	delimiter to concatenate key values (default \",\")
+EOINPUT
+
+############################################################
+#	code start
+############################################################
+
+#---	get and process arguments --------------------------
+my_args(@ARGV);
+-t STDIN and !@myGlobList and print $Instructions and exit 0;
+push @myGlobList,"-" unless(-t STDIN);
+
+$icom = int $myOptList{"comm"} if(int $myOptList{"comm"}>0);
+$ldelim = $myOptList{"s"} if($myOptList{"s"} ne "");
+$jdelim = $myOptList{"j"} if($myOptList{"j"} ne "");
+$cdelim = $myOptList{"c"} if($myOptList{"c"} ne "");
+$moda = int $myOptList{"m"} if(int $myOptList{"m"}>0);
+$k1 = int $myOptList{"k1"} if(int $myOptList{"k1"}>0);
+$k2 = int $myOptList{"k2"} if(int $myOptList{"k2"}>0);
+$kw = int $myOptList{"kw"} if(int $myOptList{"kw"}>0);
+
+#---	read the source table ------------------------------
+foreach my $fmas (@myGlobList){
+ print STDERR "$Pnam:\tReading $fmas\n";
+ open HAND,"<$fmas" or die "Can't read \"$fmas\"";
+ while(<HAND>){
+  chomp;
+  if(m/^\#/){ print "$_\n" if($icom==0); next if($icom<2);}
+  my @data = split/$ldelim/;
+  my $hk = $data[$k1-1];
+  my $hv = $data[$k2-1];
+  my $wt = 1; $wt = $data[$kw-1] if($kw>=1 and $data[$kw-1]>=0);
+  push @aggl,$hk unless(exists $ag01{$hk});
+  $ag01{$hk} += $wt;
+  $ag02{$hk} += $hv*$wt if($moda&0x02);
+  	#printf "%s\t%s\t%s\n",$hk,$wt,$ag01{$hk};
+  if($moda&0x04){
+   $ag04{$hk} .= $cdelim if($ag04{$hk} ne "");
+   $ag04{$hk} .= $hv;
+  }
+ }
+ close HAND;
+}
+
+#---	output ---------------------------------------------
+foreach my $hk (@aggl){
+ print "$hk";
+ printf "%s%s",$jdelim,$ag01{$hk} if($moda&0x01);
+ printf "%s%s",$jdelim,$ag02{$hk} if($moda&0x02);
+ printf "%s%s",$jdelim,$ag04{$hk} if($moda&0x04);
+ print "\n";
+}
+
+############################################################
+#	max min
+############################################################
+sub max
+{
+ my $max = shift;
+ while(@_){
+  my $x = shift;
+  $max = $x if($x>$max);
+ }
+ return $max;
+}
+
+sub min
+{
+ my $min = shift;
+ while(@_){
+  my $x = shift;
+  $min = $x if($x<$min);
+ }
+ return $min;
+}
+
+
+############################################################
+#	my_args
+############################################################
+sub my_args
+{
+ my $nop = scalar @_;
+ for($i=0;$i<$nop;$i++){
+  if($_[$i]=~m/^-[^=]+=$/){
+   my $new = $_[$i].$_[$i+1];
+   splice @_,$i,2,$new;
+  }
+ }
+ foreach my $arg (@_){
+  my ($opt) = ($arg =~ m/^-(\w+)/);
+  my ($val) = ($arg =~ m/^-\w+=(.*)/);
+  if($opt){
+   $myOptList{$opt} = $val;
+  }else{
+   push @myGlobList,$arg;
+  }
+ }
+}

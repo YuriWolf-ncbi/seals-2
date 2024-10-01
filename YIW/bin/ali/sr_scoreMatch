@@ -1,0 +1,213 @@
+#!/usr/bin/perl
+
+############################################################
+#	Template:	0.3, November 04 2004
+#	Parent Path:	/net/gloin/export/home/wolf/bin/???
+############################################################
+
+############################################################
+#	System etc
+############################################################
+$Pver = "0.2";
+$Pdat = "May 06 2020";
+
+($Pnam) = ($0 =~ m/([^\/]+)$/);
+($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
+
+$Ppid = $$;	# Process ID
+$Base = "tmp.$Pnam.$Ppid";
+{
+ my ($host) = ($ENV{"HOSTNAME"} =~ m/^(\w+)/);
+ my $salt = sprintf ".%s.%03d",$host,int(rand(1000));
+ $Base .= $salt;
+}
+
+############################################################
+#	Definitions
+############################################################
+$nsta = 0;
+$fcon = "-conplus";
+$gthr = 0.49;
+$hthr = 0.1;
+
+%simmat = (
+ "AA" =>   4 , "AR" =>  -1 , "AN" =>  -1 , "AD" =>  -2 , "AC" =>   0 , "AQ" =>  -1 , "AE" =>  -1 , "AG" =>   0 , "AH" =>  -2 , "AI" =>  -1 , "AL" =>  -1 , "AK" =>  -1 , "AM" =>  -1 , "AF" =>  -2 , "AP" =>  -1 , "AS" =>   1 , "AT" =>   0 , "AW" =>  -3 , "AY" =>  -2 , "AV" =>   0 ,
+ "RA" =>  -1 , "RR" =>   5 , "RN" =>   0 , "RD" =>  -1 , "RC" =>  -3 , "RQ" =>   1 , "RE" =>   0 , "RG" =>  -2 , "RH" =>   0 , "RI" =>  -3 , "RL" =>  -2 , "RK" =>   2 , "RM" =>  -1 , "RF" =>  -3 , "RP" =>  -2 , "RS" =>  -1 , "RT" =>  -1 , "RW" =>  -3 , "RY" =>  -2 , "RV" =>  -2 ,
+ "NA" =>  -1 , "NR" =>   0 , "NN" =>   6 , "ND" =>   1 , "NC" =>  -2 , "NQ" =>   0 , "NE" =>   0 , "NG" =>   0 , "NH" =>   1 , "NI" =>  -3 , "NL" =>  -3 , "NK" =>   0 , "NM" =>  -2 , "NF" =>  -3 , "NP" =>  -2 , "NS" =>   1 , "NT" =>   0 , "NW" =>  -4 , "NY" =>  -2 , "NV" =>  -3 ,
+ "DA" =>  -2 , "DR" =>  -1 , "DN" =>   1 , "DD" =>   6 , "DC" =>  -3 , "DQ" =>   0 , "DE" =>   2 , "DG" =>  -1 , "DH" =>  -1 , "DI" =>  -3 , "DL" =>  -3 , "DK" =>  -1 , "DM" =>  -3 , "DF" =>  -3 , "DP" =>  -1 , "DS" =>   0 , "DT" =>  -1 , "DW" =>  -4 , "DY" =>  -3 , "DV" =>  -3 ,
+ "CA" =>   0 , "CR" =>  -3 , "CN" =>  -2 , "CD" =>  -3 , "CC" =>   9 , "CQ" =>  -3 , "CE" =>  -3 , "CG" =>  -2 , "CH" =>  -3 , "CI" =>  -1 , "CL" =>  -1 , "CK" =>  -3 , "CM" =>  -1 , "CF" =>  -2 , "CP" =>  -3 , "CS" =>  -1 , "CT" =>  -1 , "CW" =>  -2 , "CY" =>  -2 , "CV" =>  -1 ,
+ "QA" =>  -1 , "QR" =>   1 , "QN" =>   0 , "QD" =>   0 , "QC" =>  -3 , "QQ" =>   5 , "QE" =>   2 , "QG" =>  -2 , "QH" =>   1 , "QI" =>  -3 , "QL" =>  -2 , "QK" =>   1 , "QM" =>   0 , "QF" =>  -3 , "QP" =>  -1 , "QS" =>   0 , "QT" =>  -1 , "QW" =>  -2 , "QY" =>  -1 , "QV" =>  -2 ,
+ "EA" =>  -1 , "ER" =>   0 , "EN" =>   0 , "ED" =>   2 , "EC" =>  -3 , "EQ" =>   2 , "EE" =>   5 , "EG" =>  -2 , "EH" =>   0 , "EI" =>  -3 , "EL" =>  -3 , "EK" =>   1 , "EM" =>  -2 , "EF" =>  -3 , "EP" =>  -1 , "ES" =>   0 , "ET" =>  -1 , "EW" =>  -3 , "EY" =>  -2 , "EV" =>  -2 ,
+ "GA" =>   0 , "GR" =>  -2 , "GN" =>   0 , "GD" =>  -1 , "GC" =>  -2 , "GQ" =>  -2 , "GE" =>  -2 , "GG" =>   6 , "GH" =>  -2 , "GI" =>  -3 , "GL" =>  -4 , "GK" =>  -1 , "GM" =>  -2 , "GF" =>  -3 , "GP" =>  -2 , "GS" =>   0 , "GT" =>  -2 , "GW" =>  -2 , "GY" =>  -3 , "GV" =>  -3 ,
+ "HA" =>  -2 , "HR" =>   0 , "HN" =>   1 , "HD" =>  -1 , "HC" =>  -3 , "HQ" =>   1 , "HE" =>   0 , "HG" =>  -2 , "HH" =>   7 , "HI" =>  -3 , "HL" =>  -3 , "HK" =>  -1 , "HM" =>  -1 , "HF" =>  -1 , "HP" =>  -2 , "HS" =>  -1 , "HT" =>  -2 , "HW" =>  -2 , "HY" =>   2 , "HV" =>  -3 ,
+ "IA" =>  -1 , "IR" =>  -3 , "IN" =>  -3 , "ID" =>  -3 , "IC" =>  -1 , "IQ" =>  -3 , "IE" =>  -3 , "IG" =>  -3 , "IH" =>  -3 , "II" =>   4 , "IL" =>   2 , "IK" =>  -3 , "IM" =>   1 , "IF" =>   0 , "IP" =>  -3 , "IS" =>  -2 , "IT" =>  -1 , "IW" =>  -2 , "IY" =>  -1 , "IV" =>   3 ,
+ "LA" =>  -1 , "LR" =>  -2 , "LN" =>  -3 , "LD" =>  -3 , "LC" =>  -1 , "LQ" =>  -2 , "LE" =>  -3 , "LG" =>  -4 , "LH" =>  -3 , "LI" =>   2 , "LL" =>   4 , "LK" =>  -2 , "LM" =>   2 , "LF" =>   0 , "LP" =>  -3 , "LS" =>  -2 , "LT" =>  -1 , "LW" =>  -2 , "LY" =>  -1 , "LV" =>   1 ,
+ "KA" =>  -1 , "KR" =>   2 , "KN" =>   0 , "KD" =>  -1 , "KC" =>  -3 , "KQ" =>   1 , "KE" =>   1 , "KG" =>  -1 , "KH" =>  -1 , "KI" =>  -3 , "KL" =>  -2 , "KK" =>   4 , "KM" =>  -1 , "KF" =>  -3 , "KP" =>  -1 , "KS" =>   0 , "KT" =>  -1 , "KW" =>  -3 , "KY" =>  -2 , "KV" =>  -2 ,
+ "MA" =>  -1 , "MR" =>  -1 , "MN" =>  -2 , "MD" =>  -3 , "MC" =>  -1 , "MQ" =>   0 , "ME" =>  -2 , "MG" =>  -2 , "MH" =>  -1 , "MI" =>   1 , "ML" =>   2 , "MK" =>  -1 , "MM" =>   5 , "MF" =>   0 , "MP" =>  -2 , "MS" =>  -1 , "MT" =>  -1 , "MW" =>  -1 , "MY" =>  -1 , "MV" =>   1 ,
+ "FA" =>  -2 , "FR" =>  -3 , "FN" =>  -3 , "FD" =>  -3 , "FC" =>  -2 , "FQ" =>  -3 , "FE" =>  -3 , "FG" =>  -3 , "FH" =>  -1 , "FI" =>   0 , "FL" =>   0 , "FK" =>  -3 , "FM" =>   0 , "FF" =>   6 , "FP" =>  -4 , "FS" =>  -2 , "FT" =>  -2 , "FW" =>   1 , "FY" =>   3 , "FV" =>  -1 ,
+ "PA" =>  -1 , "PR" =>  -2 , "PN" =>  -2 , "PD" =>  -1 , "PC" =>  -3 , "PQ" =>  -1 , "PE" =>  -1 , "PG" =>  -2 , "PH" =>  -2 , "PI" =>  -3 , "PL" =>  -3 , "PK" =>  -1 , "PM" =>  -2 , "PF" =>  -4 , "PP" =>   7 , "PS" =>  -1 , "PT" =>  -1 , "PW" =>  -4 , "PY" =>  -3 , "PV" =>  -2 ,
+ "SA" =>   1 , "SR" =>  -1 , "SN" =>   1 , "SD" =>   0 , "SC" =>  -1 , "SQ" =>   0 , "SE" =>   0 , "SG" =>   0 , "SH" =>  -1 , "SI" =>  -2 , "SL" =>  -2 , "SK" =>   0 , "SM" =>  -1 , "SF" =>  -2 , "SP" =>  -1 , "SS" =>   4 , "ST" =>   1 , "SW" =>  -3 , "SY" =>  -2 , "SV" =>  -2 ,
+ "TA" =>   0 , "TR" =>  -1 , "TN" =>   0 , "TD" =>  -1 , "TC" =>  -1 , "TQ" =>  -1 , "TE" =>  -1 , "TG" =>  -2 , "TH" =>  -2 , "TI" =>  -1 , "TL" =>  -1 , "TK" =>  -1 , "TM" =>  -1 , "TF" =>  -2 , "TP" =>  -1 , "TS" =>   1 , "TT" =>   4 , "TW" =>  -2 , "TY" =>  -2 , "TV" =>   0 ,
+ "WA" =>  -3 , "WR" =>  -3 , "WN" =>  -4 , "WD" =>  -4 , "WC" =>  -2 , "WQ" =>  -2 , "WE" =>  -3 , "WG" =>  -2 , "WH" =>  -2 , "WI" =>  -2 , "WL" =>  -2 , "WK" =>  -3 , "WM" =>  -1 , "WF" =>   1 , "WP" =>  -4 , "WS" =>  -3 , "WT" =>  -2 , "WW" =>  10 , "WY" =>   2 , "WV" =>  -3 ,
+ "YA" =>  -2 , "YR" =>  -2 , "YN" =>  -2 , "YD" =>  -3 , "YC" =>  -2 , "YQ" =>  -1 , "YE" =>  -2 , "YG" =>  -3 , "YH" =>   2 , "YI" =>  -1 , "YL" =>  -1 , "YK" =>  -2 , "YM" =>  -1 , "YF" =>   3 , "YP" =>  -3 , "YS" =>  -2 , "YT" =>  -2 , "YW" =>   2 , "YY" =>   6 , "YV" =>  -1 ,
+ "VA" =>   0 , "VR" =>  -2 , "VN" =>  -3 , "VD" =>  -3 , "VC" =>  -1 , "VQ" =>  -2 , "VE" =>  -2 , "VG" =>  -3 , "VH" =>  -3 , "VI" =>   3 , "VL" =>   1 , "VK" =>  -2 , "VM" =>   1 , "VF" =>  -1 , "VP" =>  -2 , "VS" =>  -2 , "VT" =>   0 , "VW" =>  -3 , "VY" =>  -1 , "VV" =>   4 ,
+);
+$sgap = -4;
+$xgap = 0;
+$gap0 = 0;
+
+############################################################
+#	Global variables
+############################################################
+
+############################################################
+#	Instructions etc
+############################################################
+$Instructions = <<EOINPUT;
+
+$Path/$Pnam $Pver, $Pdat
+
+Use: $Pnam srfile
+
+Options:
+
+	-s=n		compare against top n sequences
+			(default 0 - use consensus)
+
+	-g=x		maximum fraction of gaps (default $gthr)
+
+	-h=x		minimum homogeneity (default $hthr)
+
+	-xgap		score ambiguous as gap
+
+	-gap0		score gaps az zero
+EOINPUT
+
+############################################################
+#	code start
+############################################################
+
+#---	get and process arguments --------------------------
+my_args(@ARGV);
+-t STDIN and !@myGlobList and print $Instructions and exit 0;
+push @myGlobList,"-" unless(-t STDIN);
+
+$nsta = int $myOptList{"s"} if(int $myOptList{"s"} > 0);
+$gthr = $myOptList{"g"} + 0 if($myOptList{"g"} > 0);
+$hthr = $myOptList{"h"} + 0 if($myOptList{"h"} > 0);
+$xgap = 1 if(exists $myOptList{"xgap"});
+$gap0 = 1 if(exists $myOptList{"gap0"});
+
+$fali = shift @myGlobList;
+
+#---	convert alignment to seqcolumns --------------------
+if($nsta>0){ $fcon = "";}else{ $nsta = 1;}
+
+$CMD = "sr_filter $fali -grcut= $gthr -hocut= $hthr $fcon -gcon= $gthr -hcon= 0 -profile > $Base.sq";
+print STDERR "[ $CMD ]\n";
+system $CMD;
+
+#---	read sequence names and weights --------------------
+my @lnam = (); my @lswe = (); my @lsco = ();
+
+open HAND,"<$Base.sq" or die "Can't read \"$Base.sq\"";
+while(<HAND>){
+ chomp;
+ my ($snam, $swei) = m/^>(\S+)\s+\#\s+(\S+)/;
+ last if($snam eq "");
+ push @lnam,$snam; push @lswe,$swei;
+}
+close HAND;
+
+my $wsum = 0;
+for(my $i=0;$i<$nsta;$i++){ $wsum += ($lswe[$i]>0)?$lswe[$i]:1;}
+for(my $i=0;$i<$nsta;$i++){ $lswe[$i] /= $wsum;}
+	#for(my $i=0;$i<$nsta;$i++){
+	# printf "%.4f\t%s\n",$lswe[$i],$lnam[$i];
+	#}
+
+#---	compute sequence scores ----------------------------
+open HAND,"<$Base.sq" or die "Can't read \"$Base.sq\"";
+while(<HAND>){
+ chomp;
+ my ($snam) = m/^>(\S+)/;
+ next if($snam ne "");
+ my ($seq,$nse,$nga,$inf,$hom,$con) = split/\t/;
+ my @acol = split//,$seq;
+ for(my $j=0;$j<$nsta;$j++){
+  my $ch0 = $acol[$j];
+  my $ww0 = $lswe[$j];
+  next if($ch0 eq "-");							# gap in reference set scores 0
+  for(my $i=0;$i<@acol;$i++){
+   my $ch1 = $acol[$i];
+   my $sco = $simmat{$ch0.$ch1};
+   $sco = $sgap if($ch1 eq "-");					# gap in sequence scores $sgap
+   $sco = 0 if($ch1 eq "-" and $gap0);					# gap in sequence scores 0 if -gap0
+   $sco = $sgap if($xgap>0 and (not (exists $simmat{$ch0.$ch1})));	# X in sequence scores $sgap
+   $lsco[$i] += $sco * $hom * $ww0;
+  }
+ }
+}
+close HAND;
+
+#---	compute normalization ------------------------------
+my $snor = 0;
+for(my $i=0;$i<$nsta;$i++){ $snor += $lsco[$i] * $lswe[$i];}
+if($snor>0){
+ for(my $i=0;$i<@lnam;$i++){ $lsco[$i] /= $snor;}
+}
+
+#---	output ---------------------------------------------
+for(my $i=0;$i<@lnam;$i++){
+ printf "%.4f\t%s\n",$lsco[$i],$lnam[$i];
+}
+
+#---	clean ----------------------------------------------
+unlink <$Base.*>;
+
+############################################################
+#	max min
+############################################################
+sub max
+{
+ my $max = shift;
+ while(@_){
+  my $x = shift;
+  $max = $x if($x>$max);
+ }
+ return $max;
+}
+
+sub min
+{
+ my $min = shift;
+ while(@_){
+  my $x = shift;
+  $min = $x if($x<$min);
+ }
+ return $min;
+}
+
+
+############################################################
+#	my_args
+############################################################
+sub my_args
+{
+ my $nop = scalar @_;
+ for($i=0;$i<$nop;$i++){
+  if($_[$i]=~m/^-[^=]+=$/){
+   my $new = $_[$i].$_[$i+1];
+   splice @_,$i,2,$new;
+  }
+ }
+ foreach my $arg (@_){
+  my ($opt) = ($arg =~ m/^-(\w+)/);
+  my ($val) = ($arg =~ m/^-\w+=(.*)/);
+  if($opt){
+   $myOptList{$opt} = $val;
+  }else{
+   push @myGlobList,$arg;
+  }
+ }
+}

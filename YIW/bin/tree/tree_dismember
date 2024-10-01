@@ -1,0 +1,319 @@
+#!/usr/bin/perl
+
+############################################################
+#	Template:	0.3, November 04 2004
+#	Parent Path:	/net/gloin/export/home/wolf/bin/???
+############################################################
+
+############################################################
+#	System etc
+############################################################
+use lib $ENV{'PERL_LIB_YIW'};
+use YIW::basic;
+use YIW::tree;
+
+our $Pver = "0.3";
+our $Pdat = "2024-09-22";
+
+our ($Pnam) = ($0 =~ m/([^\/]+)$/);
+our ($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
+
+our $Ppid = $$;	# Process ID
+our $Base = "tmp.$Pnam.$Ppid";
+{
+ my ($host) = ($ENV{"HOSTNAME"} =~ m/^(\w+)/);
+ my $salt = sprintf ".%s.%03d",$host,int(rand(1000));
+ $Base .= $salt;
+}
+our $CMD = "";
+our $DEBUG = 0;
+our $VERBOSE = 1;
+our $DOIT = 1;
+our $EXITCODE = 0;
+
+############################################################
+#	Definitions
+############################################################
+$idwrd = 1;
+$delim = "[ ,;:|]";
+$EPSILON = 1e-9;
+
+$pows = 1;
+$powp = -1;
+$powl = 1/6;
+
+$minl = 4;
+$mins = 4;
+
+$name = "subtree";
+$stre = "tre";
+
+$rsoft = "0";
+$DEBUG = "0";
+
+############################################################
+#	Global variables
+############################################################
+
+############################################################
+#	Instructions etc
+############################################################
+$Instructions = <<EOINPUT;
+
+$Pnam $Pver, $Pdat
+
+$Pnam trefile [options]
+
+Reads rooted trees in Newick format with species being part of
+the leaf name; computes cut desirabilities as
+
+D = (n/N)^pops * (n/p)^powp * (l/lmax)^powl
+
+cuts and saves subtrees; prints out the list of subtrees
+
+Options:
+
+	-w=n		species name is word n (default $idwrd)
+
+	-s=x		species name separator
+
+	-pows=x		species coverage power (default $pows)
+
+	-powp=x		paralogy power (default $powp)
+
+	-powl=x		branch length power power (default $powl)
+
+	-rsoft		"soft" option for root preference
+
+	-mins=n		minimum number of species (default $mins)
+
+	-minl=n		minimum number of leaves (default $minl)
+
+	-n=x		output file name (default \"$name\")
+
+	-suf=x		output file suffix (default \"$stre\")
+EOINPUT
+
+############################################################
+#	code start
+############################################################
+
+#---	get and process arguments --------------------------
+YIW::basic::my_args(\@ARGV,1);					# pass 0 to block STDIN
+!@myGlobList and print $Instructions and exit 0;
+
+if(exists $myOptList{"DEBUG"}){ 					# hidden common option
+ $DEBUG = 1;
+ $VERBOSE = 0x7fff;
+}
+$VERBOSE = int $myOptList{"VERB"} if(exists $myOptList{"VERB"});	# hidden common option
+$DOIT = 0 if(exists $myOptList{"IDLE"});				# hidden common option
+$Base = $myOptList{"BASE"} if($myOptList{"BASE"} ne "");		# hidden common option
+
+#$flagi = 1 if(exists $myOptList{"int"});
+#$flaga = int $myOptList{"agg"} if($myOptList{"agg"}>=1);
+#$nrep = int $myOptList{"n"} if((int $myOptList{"n"})>0);
+#$alpha10 = $myOptList{"alo"} if($myOptList{"alo"}>0 and $myOptList{"alo"}<1);
+#$alpha90 = $myOptList{"ahi"} if($myOptList{"ahi"}>0 and $myOptList{"ahi"}<1);
+#$desex = $myOptList{"p"} if($myOptList{"p"}>1);
+#$qdes = $myOptList{"q"} if($myOptList{"q"}>0 and $myOptList{"q"}<1);
+#$modl = int $myOptList{"l"} if((int $myOptList{"l"})>0);
+#$mult = int $myOptList{"m"} if((int $myOptList{"m"})>0);
+#$fnex = 1 if(exists $myOptList{"nex"});
+#$fout = $myOptList{"t"} if($myOptList{"t"} ne "");
+$idwrd = int $myOptList{"w"} if(exists $myOptList{"w"});
+$delim = $myOptList{"s"} if($myOptList{"s"} ne "");
+$name = $myOptList{"n"} if($myOptList{"n"} ne "");
+$stre = $myOptList{"suf"} if($myOptList{"suf"} ne "");
+$pows = $myOptList{"pows"}+0 if(exists $myOptList{"pows"});
+$powp = $myOptList{"powp"}+0 if(exists $myOptList{"powp"});
+$powl = $myOptList{"powl"}+0 if(exists $myOptList{"powl"});
+$mins = int $myOptList{"mins"} if((int $myOptList{"mins"})>0);
+$minl = int $myOptList{"minl"} if((int $myOptList{"minl"})>0);
+$rsoft = 1 if(exists $myOptList{"rsoft"});
+$DEBUG = 1 if(exists $myOptList{"DEBUG"});
+
+$ftre = shift @myGlobList;
+
+print STDERR "$Pnam:\tReading tree: $ftre\n";
+
+my $root = read_newick($ftre,0);
+
+$ntre = 1;
+while(1){
+ 	#printf "=== NTRE:\t%d\n",$ntre;
+ count_species($root);
+ 
+ branch_desirability($root,$root);
+	#print_tree($root,0) if($DEBUG);
+
+ my ($nodc,$desi) = find_best_cut($root);
+ 	#printf "%d\tBest:\t%.4f\n",$ntre,$desi;
+ 
+ if($desi<=0 or $$root{"scnt"}<$mins or $$root{"lcnt"}<$minl){
+  cut_tree($root,"$name.xxx.$stre");
+  print "$name.xxx\n";
+  last;
+ }
+
+ my $enough = cut_tree($nodc,"$name.$ntre.$stre");
+ print "$name.$ntre\n";
+	#print_tree($root,0) if($enough==1);
+ last if($enough);
+ $ntre++;
+ 	#last if($ntre>10);
+}
+
+############################################################
+#	count_species($rnod)
+############################################################
+sub count_species
+{
+ my $rnod = shift;
+
+ my %slst = ();
+ $$rnod{"spec"} = \%slst;
+ my $rlst = $$rnod{"spec"};
+ 
+ my $rdes = $$rnod{"d"};
+
+ unless(@$rdes){			# terminal node
+  my $spec = $$rnod{"n"};
+  $spec = (split/$delim/,$spec)[$idwrd-1] if($idwrd>0);
+  $$rlst{$spec} = 1;
+  $$rnod{"lcnt"} = 1;
+  $$rnod{"scnt"} = 1;
+  return 0;
+ }
+ 
+ my $maxl = 0;
+ for(my $i=0;$i<@$rdes;$i++){
+  my $rnxt = $$rdes[$i];
+  $maxb = count_species($rnxt);
+  my $rlsn = $$rnxt{"spec"};
+  foreach my $spec (keys %$rlsn){ $$rlst{$spec} += $$rlsn{$spec};}
+  $maxl = $maxb if($maxb>$maxl);
+ }
+ $$rnod{"lcnt"} = 0;
+ foreach my $spec (keys %$rlst){ $$rnod{"lcnt"} += $$rlst{$spec};}
+ $$rnod{"scnt"} = scalar keys %$rlst;
+ $maxl = $$rnod{"l"} if($$rnod{"l"}>$maxl);
+ $$rnod{"lmax"} = $maxl;
+ if($$rnod{"p"} eq ""){					# special for root
+  if($rsoft){
+   my $rmax = 0;
+   for(my $i=0;$i<@$rdes;$i++){
+    my $rnxt = $$rdes[$i];
+    $rmax = $$rnxt{"l"} if($$rnxt{"l"}>$rmax);
+   }
+   $$rnod{"l"} = $rmax;
+  }else{
+   $$rnod{"l"} = $maxl;
+  }
+ }
+ return $maxl;
+}
+
+############################################################
+#	branch_desirability($rnod,$root)
+############################################################
+sub branch_desirability
+{
+ my $rnod = shift;
+ my $root = shift;
+
+ my $rdes = $$rnod{"d"};
+
+ unless(@$rdes){			# terminal node
+  return;
+ }
+ 
+ for(my $i=0;$i<@$rdes;$i++){
+  my $rnxt = $$rdes[$i];
+  branch_desirability($rnxt,$root);
+ }
+ $$rnod{"desi"} = calc_desire($$rnod{"scnt"},$$rnod{"lcnt"},$$root{"scnt"},$$rnod{"l"},$$root{"lmax"});
+}
+
+############################################################
+#	find_best_cut($rnod)
+############################################################
+sub find_best_cut
+{
+ my $rnod = shift;
+ 
+ my $rdes = $$rnod{"d"};
+
+ unless(@$rdes){			# terminal node
+  return ("",0);
+ }
+ 
+ my $nodc = $rnod;
+ my $desi = $$rnod{"desi"};
+ 
+ for(my $i=0;$i<@$rdes;$i++){
+  my $rnxt = $$rdes[$i];
+  my ($nnxt,$dnxt) = find_best_cut($rnxt);
+  if($dnxt>=$desi){ $nodc = $nnxt; $desi = $dnxt;}
+ }
+ return ($nodc,$desi);
+}
+
+
+############################################################
+#	cut_tree($nodc,$fnam)
+############################################################
+sub cut_tree
+{
+ my $nodc = shift;
+ my $fnam = shift;
+ 
+ write_newick($nodc,$fnam,0x02);
+ 
+ return 1 if($$nodc{"p"} eq "");		# already at root
+ 
+ $rnod = $$nodc{"p"};
+ 
+ my $rdes = $$rnod{"d"};
+ 
+ my @dlst = ();
+ for(my $i=0;$i<@$rdes;$i++){
+  my $rnxt = $$rdes[$i];
+  push @dlst,$rnxt if($rnxt ne $nodc);		# cut node not needed
+ }
+ @$rdes = @dlst;				# new list of descendants
+
+ return 0 if(@$rdes>1);				# still many descendants
+ 
+ my $rnxt = $$rdes[0];				# the only descendant
+ my $dnxt = $$rnxt{"d"};
+ 
+ if(@$dnxt){
+  @$rdes = @$dnxt;					# adopt grandchildren
+  for(my $i=0;$i<@$rdes;$i++){
+   my $rnxt = $$rdes[$i];
+   $$rnxt{"p"} = $rnod;
+  }
+ }else{
+  $$rnod{"d"} = "";
+  $$rnod{"n"} = $$rnxt{"n"};				# take name
+ }
+ $$rnod{"l"} += $$rnxt{"l"} if($$rnod{"p"});	# update branch length unless root
+ return 0;					# signal to continue
+}
+
+############################################################
+#	calc_desire($nspe,$nlea,$tspe,$blen,$bmax)
+############################################################
+sub calc_desire
+{
+ my $nspe = shift;
+ my $nlea = shift;
+ my $tspe = shift;
+ my $blen = shift;
+ my $bmax = shift;
+
+ #return (($nspe/$tspe)**$pows)*(($nlea/$nspe)**$powp);
+ $tspe = 1 if($tspe<1); $nspe = 1 if($nspe<1); $bmax = 1 if($bmax<=0);
+ return (($nspe/$tspe)**$pows)*(($nlea/$nspe)**$powp)*(($blen/$bmax)**$powl);
+}

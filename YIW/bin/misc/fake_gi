@@ -1,0 +1,132 @@
+#!/usr/bin/perl
+
+############################################################
+#	Template:	0.2, May 02 2002
+#	Parent Path:	/net/gloin/export/home/wolf/bin/???
+############################################################
+
+############################################################
+#	System etc
+############################################################
+$Pver = "0.3";
+$Pdat = "June 04 2012";
+
+($Pnam) = ($0 =~ m/([^\/]+)$/);
+($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
+
+############################################################
+#	Definitions
+############################################################
+$nbas = 1;
+$pref = "gi|";
+$suff = "";
+$ndig = 0;
+$form = "%s%";
+
+############################################################
+#	Global variables
+############################################################
+
+############################################################
+#	Instructions etc
+############################################################
+$Instructions = <<EOINPUT;
+
+$Path/$Pnam $Pver, $Pdat
+
+Use: $Pnam name [options]
+
+Assigns fake gis to FASTA sequences.
+
+Options:
+
+	-b=n		start from n (default $nbas)
+
+	-p=prefix	prepend the number with prefix (default $pref)
+
+	-s=suffix	suffix after the number (default none)
+
+	-d=n		pad with zeros to length n (default 0 - no)
+EOINPUT
+
+############################################################
+#	code start
+############################################################
+
+#---	get and process arguments --------------------------
+my_args(@ARGV);
+-t STDIN and !@myGlobList and print $Instructions and exit 0;
+push @myGlobList,"-" unless(-t STDIN);
+
+$nbas = $myOptList{"b"}+0 if(exists $myOptList{"b"});
+$pref = $myOptList{"p"} if(exists $myOptList{"p"});
+$suff = $myOptList{"s"} if(exists $myOptList{"s"});
+$ndig = $myOptList{"d"}+0 if(exists $myOptList{"d"});
+
+$form .= "0$ndig" if($ndig);
+$form .= "d%s";
+
+foreach my $name (@myGlobList){
+ my $savedel = $/;
+ $/="\n>";
+ open HAND,"<$name" or die "Can't read \"$name\"";
+ while(<HAND>){
+  chomp;
+  my ($def,@rest)=split /\n+/;
+  $def =~ s/^>*//;
+  my $seq = join "",@rest;
+  $seq =~ tr/ \t//d;
+  my $app = sprintf $form,$pref,$nbas,$suff;
+  print ">$app $def\n$seq\n";
+  $nbas++;
+ }
+ close HAND;
+ $/=$savedel;
+}
+
+############################################################
+#	max min
+############################################################
+sub max
+{
+ my $max = shift;
+ while(@_){
+  my $x = shift;
+  $max = $x if($x>$max);
+ }
+ return $max;
+}
+
+sub min
+{
+ my $min = shift;
+ while(@_){
+  my $x = shift;
+  $min = $x if($x<$min);
+ }
+ return $min;
+}
+
+
+############################################################
+#	my_args
+############################################################
+sub my_args
+{
+ my $nop = scalar @_;
+ for($i=0;$i<$nop;$i++){
+  if($_[$i]=~m/^-[^=]+=$/){
+   my $new = $_[$i].$_[$i+1];
+   splice @_,$i,2,$new;
+  }
+ }
+ foreach my $arg (@_){
+  my ($opt) = ($arg =~ m/^-(\w+)/);
+  my ($val) = ($arg =~ m/^-\w+=(.*)/);
+  if($opt){
+   $myOptList{$opt} = $val;
+  }else{
+   push @myGlobList,$arg;
+  }
+ }
+}

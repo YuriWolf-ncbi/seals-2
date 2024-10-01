@@ -1,0 +1,148 @@
+#!/usr/bin/perl
+
+############################################################
+#	Template:	0.2, May 02 2002
+#	Parent Path:	/net/gloin/export/home/wolf/bin/???
+############################################################
+
+############################################################
+#	System etc
+############################################################
+$Pver = "0.1";
+$Pdat = "September 23 2004";
+
+($Pnam) = ($0 =~ m/([^\/]+)$/);
+($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
+
+############################################################
+#	Definitions
+############################################################
+$idwrd = 2;
+$delim = "[ ,;:|]";
+$tmode = 0;
+$fmode = 0;
+$prefix = "";
+
+############################################################
+#	Global variables
+############################################################
+
+############################################################
+#	Instructions etc
+############################################################
+$Instructions = <<EOINPUT;
+
+$Path/$Pnam $Pver, $Pdat
+
+Use: $Pnam name [options]
+
+FASTA to sequence lengths.
+
+Options:
+
+	-t		table format (with seq ID or file name)
+
+	-w=n		use n-th word of ID (default $idwrd; 0 - all)
+
+	-f		by file (default total)
+
+	-s		by sequence (default total)
+
+	-p=pref		prefix for the table (default none)
+EOINPUT
+
+############################################################
+#	code start
+############################################################
+
+#---	get and process arguments --------------------------
+my_args(@ARGV);
+-t STDIN and !@myGlobList and print $Instructions and exit 0;
+push @myGlobList,"-" unless(-t STDIN);
+
+$idwrd = $myOptList{"w"} if(exists $myOptList{"w"});
+$tmode = 1 if(exists $myOptList{"t"});
+$fmode = 1 if(exists $myOptList{"f"});
+$fmode = 2 if(exists $myOptList{"s"});
+$prefix = $myOptList{"p"} if($myOptList{"p"} ne "");
+
+foreach my $name (@myGlobList){
+ my $savedel = $/;
+ $/="\n>";
+ my $flen = 0;
+ open HAND,"<$name" or die "Can't read \"$name\"";
+ while(<HAND>){
+  chomp;
+  my ($def,@rest)=split /\n+/;
+  $def =~ s/^>*//;
+  my $seq = join "",@rest;
+  $seq =~ tr/ \t//d;
+  my ($id) = split/ +/,$def;
+  $id = (split/$delim/,$id)[$idwrd-1] if($idwrd>0);
+  my $slen = length $seq;
+  if($fmode==2){
+   print $prefix,"$id\t" if($tmode);
+   printf "%d\n",$slen;
+  }
+  $flen += $slen;
+ }
+ close HAND;
+ $/=$savedel;
+ if($fmode==1){
+  print $prefix,"$name\t" if($tmode);
+  printf "%d\n",$flen;
+ }
+ $tlen += $flen;
+}
+
+if($fmode==0){
+ print $prefix,"Total:\t" if($tmode);
+ printf "%d\n",$tlen;
+}
+
+############################################################
+#	max min
+############################################################
+sub max
+{
+ my $max = shift;
+ while(@_){
+  my $x = shift;
+  $max = $x if($x>$max);
+ }
+ return $max;
+}
+
+sub min
+{
+ my $min = shift;
+ while(@_){
+  my $x = shift;
+  $min = $x if($x<$min);
+ }
+ return $min;
+}
+
+
+############################################################
+#	my_args
+############################################################
+sub my_args
+{
+ my $nop = scalar @_;
+ for($i=0;$i<$nop;$i++){
+  if($_[$i]=~m/^-[^=]+=$/){
+   my $new = $_[$i].$_[$i+1];
+   splice @_,$i,2,$new;
+  }
+ }
+ foreach my $arg (@_){
+  my ($opt) = ($arg =~ m/^-(\w+)/);
+  my ($val) = ($arg =~ m/^-\w+=(.*)/);
+  if($opt){
+   $myOptList{$opt} = $val;
+  }else{
+   push @myGlobList,$arg;
+  }
+ }
+}

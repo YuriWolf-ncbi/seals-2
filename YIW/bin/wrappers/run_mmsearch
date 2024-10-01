@@ -1,0 +1,182 @@
+#!/usr/bin/perl
+
+############################################################
+#	Template:	1.5, August 09, 2018
+#	Parent Path:	/home/wolf/bin on frosty
+############################################################
+
+############################################################
+#	System etc
+############################################################
+use lib $ENV{'PERL_LIB_YIW'};
+use YIW::basic;
+# uncomment the next line if better randomness is important
+# use Math::Random::MT qw/rand srand/;
+
+our $Pver = "0.3";
+our $Pdat = "August 09 2024";
+
+our ($Pnam) = ($0 =~ m/([^\/]+)$/);
+our ($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
+
+our $Ppid = $$;	# Process ID
+our $Base = "tmp.$Pnam.$Ppid";
+{
+ my ($host) = ($ENV{"HOSTNAME"} =~ m/^(\w+)/);
+ my $salt = sprintf ".%s.%03d",$host,int(rand(1000));
+ $Base .= $salt;
+}
+our $CMD = "";
+our $DEBUG = 0;
+our $VERBOSE = 1;
+our $DOIT = 1;
+our $EXITCODE = 0;
+
+############################################################
+#	Definitions
+############################################################
+my $mmdb = "";
+my $fasta = 0;
+my $idwrd = 0;
+my $delim = "[ ,;:|]";
+my $sens = 6;
+my $thre = "";
+my $maxb = 100;
+
+############################################################
+#	Global variables
+############################################################
+
+############################################################
+#	Instructions etc
+############################################################
+$Instructions = <<EOINPUT;
+
+$Path/$Pnam $Pver, $Pdat
+
+Use: $Pnam querydb [options]
+
+Returns an equivalent of BLAST "qseqid sseqid qlen slen qstart qend sstart send evalue bitscore similarity"
+
+Options:
+
+	-d=targetdb	MMSEQS2 db (MANDATORY!)
+
+	-s=x		sensitivity (default $sens; 1<s<7.5)
+
+	-fasta		FASTA query (make temporary DB)
+
+	-w=n		use n-th word of if FASTA ID (default all)
+
+	-nt=n		allow n threads (default all)
+
+	-maxb=n		maximum n hits per query (default $maxb)
+EOINPUT
+
+############################################################
+#	code start
+############################################################
+
+#---	get and process arguments --------------------------
+YIW::basic::my_args(\@ARGV,0);					# pass 0 to block STDIN
+!@myGlobList and print $Instructions and exit 0;
+
+if(exists $myOptList{"DEBUG"}){ 					# hidden common option
+ $DEBUG = 1;
+ $VERBOSE = 0x7fff;
+}
+$VERBOSE = int $myOptList{"VERB"} if(exists $myOptList{"VERB"});	# hidden common option
+$DOIT = 0 if(exists $myOptList{"IDLE"});				# hidden common option
+$Base = $myOptList{"BASE"} if($myOptList{"BASE"} ne "");		# hidden common option
+
+# examples for using options:
+# $opts = 1 if(exists $myOptList{"q"});				# on/off
+# $opti = int $myOptList{"i"} if(int $myOptList{"i"}>0);	# positive integer
+# $opti = int $myOptList{"i"} if(exists $myOptList{"i"});	# any integer <- string
+# $optr = $myOptList{"x"} + 0 if($myOptList{"x"}>0);		# positive real
+# $optl = $myOptList{"l"} if($myOptList{"l"} ne "");		# non-empty string
+# $optx = "0" if($optx==0);					# to be passed in command line
+$fasta = 1 if(exists $myOptList{"fasta"});
+$mmdb = $myOptList{"db"} if($myOptList{"db"} ne "");			# hidden alternative
+$mmdb = $myOptList{"d"} if($myOptList{"d"} ne "");
+$sens = $myOptList{"s"} + 0 if($myOptList{"s"}>0);
+$idwrd = int $myOptList{"w"} if(exists $myOptList{"w"});
+$thre = "--threads ".(int $myOptList{"nt"}) if(int $myOptList{"nt"}>0);
+$maxb = int $myOptList{"maxb"} if(int $myOptList{"maxb"}>0);
+
+my $dque = shift @myGlobList;
+
+#---	rest of the code -----------------------------------
+# $CMD = ""; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
+#
+# foreach my $xarg (@myGlobList){
+#  my @xglo = glob $xarg;
+#  foreach my $name (@xglo){
+#  }
+# }
+#
+# print STDERR "$Pnam:\tReading $dlst/$core.$clst\n" if($VERBOSE);
+# open HAND,"<$dlst/$core.$clst" or die "$Pnam:\tCan't read \"$dlst/$core.$clst\"";
+# while(<HAND>){
+#  chomp;
+# }
+# close HAND;
+# printf STDERR "$Pnam:\t\t%s\tgenomes\n",int_commify(scalar @glist) if($VERBOSE);
+#
+# log_this_point($Pnam,"$Pnam\t$Ppid","started") if($VERBOSE>1);
+
+#---	prep -----------------------------------------------
+my $Bdir = YIW::basic::tempdir_make_safe("rmms");
+
+my %gi2id = ();
+if($fasta){
+#---	extract sequences ----------------------------------
+ $CMD = "fake_gi $dque -b=1 -p=\"yseq_id_\" > $Bdir/tmp.fa"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
+
+#---	read IDs -------------------------------------------
+ open HAND,"<$Bdir/tmp.fa" or die "$Pnam:\tCan't read \"$Bdir/tmp.fa\"";
+ while(<HAND>){
+  chomp;
+  my ($gi,$id) = m/>(\S+)\s+(\S+)/;
+  next if($id eq "");
+  $id = (split/$delim/,$id)[$idwrd-1] if($idwrd>0);
+  $gi2id{$gi} = $id;
+ }
+ close HAND;
+
+#---	database -------------------------------------------
+ $CMD = "mmseqs createdb $Bdir/tmp.fa $Bdir/tmp.db > /dev/null"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
+
+ $dque = "$Bdir/tmp.db"; 
+}
+
+#---	search ---------------------------------------------
+$CMD = "mmseqs search $dque $mmdb $Bdir/tmp.search $Bdir -s $sens --max-seqs $maxb $thre > /dev/null"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
+
+#---	convert --------------------------------------------
+$CMD = "mmseqs createtsv $dque $mmdb $Bdir/tmp.search $Bdir/tmp.tab > /dev/null"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
+
+#---	recode ---------------------------------------------
+open HAND,"<$Bdir/tmp.tab" or die "$Pnam:\tCan't read \"$Bdir/tmp.tab\"";
+while(<HAND>){
+ chomp;
+ my ($qgi,$sid,$sco,$sim,$eva,$qq1,$qq2,$qle,$ss1,$ss2,$sle) = split /\t/;
+ next if($qgi eq "");
+ $qid = $gi2id{$qgi}; $qid = $qgi if($qid eq "");
+ printf "%s\n",(join "\t",$qid,$sid,$qle,$sle,$qq1,$qq2,$ss1,$ss2,$eva,$sco,$sim);
+}
+close HAND;
+
+#---	clean ----------------------------------------------
+unless($DEBUG){
+ $CMD = "rm -r $Bdir/"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
+}
+# unlink <$Base.*> unless($DEBUG);
+
+############################################################
+#	template_function($xxxx)
+############################################################
+#sub template_function
+#{
+# my $xxxx = shift;
+#}

@@ -1,0 +1,116 @@
+#!/usr/bin/perl
+
+############################################################
+#	Template:	0.3, November 04 2004
+#	Parent Path:	/net/gloin/export/home/wolf/bin/???
+############################################################
+
+############################################################
+#	System etc
+############################################################
+use lib $ENV{'PERL_LIB_YIW'};
+use YIW::basic;
+use YIW::stat;
+
+$Pver = "0.1";
+$Pdat = "November 15 2014";
+
+($Pnam) = ($0 =~ m/([^\/]+)$/);
+($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
+
+$Ppid = $$;	# Process ID
+############################################################
+#	Definitions
+############################################################
+my $icom = 0;
+my $ldelim = "\t";
+my $jdelim = "\t";
+my $kp = 1;
+my $qlo = 0.5;
+my $qhi = 0.5;
+my $clo = 0.5;
+my $chi = 2;
+
+############################################################
+#	Global variables
+############################################################
+my @tabl;
+my @tkey;
+
+############################################################
+#	Instructions etc
+############################################################
+$Instructions = <<EOINPUT;
+
+$Path/$Pnam $Pver, $Pdat
+
+Use: $Pnam table -k=n [options]
+
+Reads the table into memory, computes quantiles of the key;
+selects entries with key values within bounds. Implies non-negative numbers.
+
+Options:
+
+	-k=n		permute n-th field relative to the rest (default $kp)
+
+	-qlo=x		quantile for the lower boundary (default $qlo)
+
+	-qhi=x		quantile for the upper boundary (default $qlo)
+
+	-clo=x		coefficient for the lower boundary (default $clo)
+
+	-chi=x		coefficient for the upper boundary (default $chi)
+
+	-s=\"delim\"	delimiters to split line (default \"\\t\")
+
+	-j=\"delim\"	delimiter to join line (default \"\\t\")
+
+	-comm=n		lines starting with \"\#\" (default - skip)
+			1 - treat as normal
+EOINPUT
+
+############################################################
+#	code start
+############################################################
+
+#---	get and process arguments --------------------------
+my_args(@ARGV);
+-t STDIN and !@myGlobList and print $Instructions and exit 0;
+push @myGlobList,"-" unless(-t STDIN);
+
+$icom = int $myOptList{"comm"} if(int $myOptList{"comm"}>0);
+$ldelim = $myOptList{"s"} if($myOptList{"s"} ne "");
+$jdelim = $myOptList{"j"} if($myOptList{"j"} ne "");
+$kp = int $myOptList{"k"} if(int $myOptList{"k"}>0);
+$qlo = $myOptList{"qlo"} + 0 if(exists $myOptList{"qlo"});
+$qhi = $myOptList{"qhi"} + 0 if(exists $myOptList{"qhi"});
+$clo = $myOptList{"clo"} + 0 if(exists $myOptList{"clo"});
+$chi = $myOptList{"chi"} + 0 if(exists $myOptList{"chi"});
+
+#---	read the source table ------------------------------
+foreach my $fnam (@myGlobList){
+ print STDERR "$Pnam:\tReading $fnam\n";
+ open HAND,"<$fnam" or die "Can't read \"$fnam\"";
+ while(<HAND>){
+  chomp;
+  if(m/^\#/){ next unless($icom>0);}
+  push @tabl,$_;
+  my @data = split/$ldelim/;
+  push @tkey,$data[$kp-1];
+ }
+ close HAND;
+}
+	printf STDERR "%d\t%d\n",(scalar @tabl),(scalar @tkey);
+
+#---	quantiles  & bounds --------------------------------
+@tkey = sort {$a<=>$b} @tkey;
+my $blo = array2quant(\@tkey,(scalar @tkey),$qlo)*$clo;
+my $bhi = array2quant(\@tkey,(scalar @tkey),$qhi)*$chi;
+
+
+#---	print table ----------------------------------------
+for(my $i=0;$i<@tabl;$i++){
+ my @data = split/$ldelim/,$tabl[$i];
+ next if($data[$kp-1]<$blo or $data[$kp-1]>$bhi);
+ printf "%s\n",(join $jdelim,@data);
+}

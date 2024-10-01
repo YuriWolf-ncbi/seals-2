@@ -1,0 +1,268 @@
+#!/usr/bin/perl
+
+############################################################
+#	Template:	1.5, August 09, 2018
+#	Parent Path:	/home/wolf/bin on frosty
+############################################################
+
+############################################################
+#	System etc
+############################################################
+use lib $ENV{'PERL_LIB_YIW'};
+use YIW::basic;
+use YIW::blast;
+# uncomment the next line if better randomness is important
+# use Math::Random::MT qw/rand srand/;
+
+our $Pver = "0.6";
+our $Pdat = "August 09 2024";
+
+our ($Pnam) = ($0 =~ m/([^\/]+)$/);
+our ($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
+
+our $Ppid = $$;	# Process ID
+our $Base = "tmp.$Pnam.$Ppid";
+{
+ my ($host) = ($ENV{"HOSTNAME"} =~ m/^(\w+)/);
+ my $salt = sprintf ".%s.%03d",$host,int(rand(1000));
+ $Base .= $salt;
+}
+our $CMD = "";
+our $DEBUG = 0;
+our $VERBOSE = 1;
+our $DOIT = 1;
+our $EXITCODE = 0;
+
+############################################################
+#	Definitions
+############################################################
+my $ethr = 1e10;
+my $q300 = 0;
+my $idfile = "";
+my $modeopt = 0;
+my $mcod = 3;
+my $othr = 0.333;
+my $wbas = 60;
+my $dquo = 0.5;
+my $hardexpand = 0;
+
+
+############################################################
+#	Global variables
+############################################################
+my %ilst = ();
+
+############################################################
+#	Instructions etc
+############################################################
+$Instructions = <<EOINPUT;
+
+$Path/$Pnam $Pver, $Pdat
+
+Use: $Pnam name [options]
+
+Options:
+
+	-e=x		target e-value (default $ethr)
+
+	-q300=x		e-value threshold dependent on length (2 recommended)
+
+	-ilist=file	limit search to a list of IDs or GIs
+
+	-o=n		footprint optimization mode
+			0 - expand, resolve and smooth (default)
+			1 - expand only
+			2 - as is
+
+	-hardex		expand hits with all match codes (default <=1; overrides -o)
+
+	-mcod=n		ignore hit codes >n for hit mapping (default $mcod)
+
+	-othr=x		max overlap between HSPs (default $othr)
+
+	-mind=n		min domain length (default $wbas)
+EOINPUT
+
+############################################################
+#	code start
+############################################################
+
+#---	get and process arguments --------------------------
+YIW::basic::my_args(\@ARGV,1);					# pass 0 to block STDIN
+!@myGlobList and print $Instructions and exit 0;
+
+if(exists $myOptList{"DEBUG"}){ 					# hidden common option
+ $DEBUG = 1;
+ $VERBOSE = 0x7fff;
+}
+$VERBOSE = int $myOptList{"VERB"} if(exists $myOptList{"VERB"});	# hidden common option
+$DOIT = 0 if(exists $myOptList{"IDLE"});				# hidden common option
+$Base = $myOptList{"BASE"} if($myOptList{"BASE"} ne "");		# hidden common option
+if((lc $Base) eq "safe"){						# slow but safe
+ while(1){
+  my $bnum = int(rand(0x7fffffff));
+  $Base = "tmp.$Pnam.$bnum";
+  last if((glob "$Base.*")==0);
+ }
+}
+# examples for using options:
+# $opts = 1 if(exists $myOptList{"q"});				# on/off
+# $opti = int $myOptList{"i"} if(int $myOptList{"i"}>0);	# positive integer
+# $opti = int $myOptList{"i"} if(exists $myOptList{"i"});	# any integer <- string
+# $optr = $myOptList{"x"} + 0 if($myOptList{"x"}>0);		# positive real
+# $optl = $myOptList{"l"} if($myOptList{"l"} ne "");		# non-empty string
+# $optx = "0" if($optx==0);					# to be passed in command line
+$ethr = $myOptList{"e"} + 0 if($myOptList{"e"}>0);
+$q300 = $myOptList{"q300"} + 0 if($myOptList{"q300"}>0);
+$idfile = $myOptList{"glist"} if($myOptList{"glist"} ne "");	# same as "-ilist"
+$idfile = $myOptList{"ilist"} if($myOptList{"ilist"} ne "");	# same as "-glist"
+$modeopt = int $myOptList{"o"} if(exists $myOptList{"o"});
+$mcod = int $myOptList{"mcod"} if(exists $myOptList{"mcod"});
+$othr = $myOptList{"othr"} + 0 if(exists $myOptList{"othr"});
+$wbas = int $myOptList{"mind"} if(int $myOptList{"mind"}>0);
+$hardexpand = 1 if(exists $myOptList{"hardex"});
+
+$modeopt = 0 if($hardexpand>0);
+
+# my $fpat = shift @myGlobList;
+
+#---	rest of the code -----------------------------------
+# $CMD = ""; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
+#
+# foreach my $xarg (@myGlobList){
+#  my @xglo = glob $xarg;
+#  foreach my $name (@xglo){
+#  }
+# }
+#
+# print STDERR "$Pnam:\tReading $dlst/$core.$clst\n" if($VERBOSE);
+# open HAND,"<$dlst/$core.$clst" or die "$Pnam:\tCan't read \"$dlst/$core.$clst\"";
+# while(<HAND>){
+#  chomp;
+# }
+# close HAND;
+# printf STDERR "$Pnam:\t\t%s\tgenomes\n",int_commify(scalar @glist) if($VERBOSE);
+#
+# log_this_point($Pnam,"$Pnam\t$Ppid","started") if($VERBOSE>1);
+
+#---	read idfile if present -----------------------------
+if($idfile ne ""){
+ print STDERR "$Pnam:\tReading $idfile\n" if($VERBOSE);
+ open HAND,"<$idfile" or die "$Pnam:\tCan't read \"$idfile\"";
+ while(<HAND>){
+  chomp;
+  my ($id) = split/\s+/;
+  $ilst{$id} = 1;
+ }
+ close HAND;
+ printf STDERR "$Pnam:\t\t%s\tIDs\n",int_commify(scalar keys %ilst) if($VERBOSE);
+}
+
+#---	read paths -----------------------------------------
+my %pdat = ();
+foreach my $xarg (@myGlobList){
+ my @xglo = glob $xarg;
+ foreach my $name (@xglo){
+  print STDERR "$Pnam:\tReading $name\n" if($VERBOSE>1);
+  open HAND,"<$name" or die "Can't read \"$name\"";
+  while(<HAND>){
+   chomp;
+   ($scor,$code,$path,$patq,$hple,$qple,$hlen,$qlen,$hh,$qq,$ev) = split/\t/;
+   next if($code>$mcod);
+   my $ecur = $ethr*(300/$qlen)**$q300;
+   next if($ev>$ecur);
+   next if($ilst{$hh} eq "" and $idfile ne "");
+   if($pdat{$hh} eq ""){ my @tmpp = (); $pdat{$hh} = \@tmpp;}
+   my $rlst = $pdat{$hh};
+   push @$rlst,$_;
+  }
+  close HAND;
+ }
+}
+printf STDERR "$Pnam:\t\t%s\tproteins\n",int_commify(scalar keys %pdat) if($VERBOSE);
+
+#---	process paths --------------------------------------
+foreach my $hh (sort keys %pdat){
+ my $rlst = $pdat{$hh};
+ process_protein($rlst);
+}
+
+#---	clean ----------------------------------------------
+# unlink <$Base.*> unless($DEBUG);
+
+############################################################
+#	process_protein($rdat)
+############################################################
+sub process_protein
+{
+ my $rdat = shift;
+ 
+#---	priority list --------------------------------------
+ @$rdat = sort {my @adat = split/\t/,$a; my @bdat = split/\t/,$b; return $bdat[0]<=>$adat[0] unless($bdat[0]==$adat[0]); return $adat[1]<=>$bdat[1] unless($adat[1]==$bdat[1]); return $bdat[4]<=>$adat[4]} @$rdat;				# sort by score
+
+#---	init by the top hit --------------------------------
+ my @paok = ();
+ push @paok,$$rdat[0];
+ 
+ my ($scor,$code,$path,$patq,$hple,$qple,$hlen,$qlen,$hh,$qq,$ev) = split/\t/,$paok[0];
+ 
+#---	collect compatible paths ---------------------------
+ for(my $i=1;$i<@$rdat;$i++){
+  my $ibad = 0;
+  my ($sx,$cx,$patx,$paqx,$plex,$plqx) = split/\t/,$$rdat[$i];
+  for(my $j=0;$j<@paok;$j++){
+   my ($sy,$cy,$paty,$paqy,$pley,$plqy) = split/\t/,$paok[$j];
+   my $over = YIW::blast::calc_path_overlap($patx,$paty);
+   $ibad = 1 if($over/min($plex,$pley)>$othr);
+   last if($ibad);
+  }
+  next if($ibad);
+  push @paok,$$rdat[$i];
+ }
+
+#---	sort paths by coordinates --------------------------
+ @paok = sort {my @adat = split/\t/,$a; my @bdat = split/\t/,$b; return $adat[2]<=>$bdat[2]} @paok;
+ 
+#---	maybe print and quit -------------------------------
+ if($modeopt>=2){						# RAW paths
+  for(my $i=0;$i<@paok;$i++){
+   printf "%s\n",$paok[$i];
+  }
+  return;
+ }
+
+#---	reconcile expand smooth ----------------------------
+ my $noexpand = 0;
+ while(1){
+  my @pnew = ();
+  $wbas = -1 if($modeopt==1);					# expand, not smooth
+ 
+  blast_reconcile_paths(\@paok,\@pnew,$hlen,$wbas,$dquo,$hardexpand,$noexpand);
+
+  $noexpand = 1;
+ 
+  for(my $i=0;$i<@paok;$i++){
+   my ($scor,$code,$path,$patq,$hple,$qple,$hlen,$qlen,$hh,$qq,$ev) = split/\t/,$paok[$i];
+   my $hpln = YIW::blast::path_length($pnew[$i]);
+   $paok[$i] = join "\t",($scor,$code,$pnew[$i],$patq,$hpln,$qple,$hlen,$qlen,$hh,$qq,$ev)
+  }
+  @paok = sort {my @adat = split/\t/,$a; my @bdat = split/\t/,$b; return $adat[2]<=>$bdat[2]} @paok;
+
+  my $omax = 0; 
+  for(my $i=1;$i<@paok;$i++){
+   my ($scox,$codx,$patx) = split/\t/,$paok[$i-1];
+   my ($scoy,$cody,$paty) = split/\t/,$paok[$i];
+   my $over = YIW::blast::calc_path_overlap($patx,$paty);
+   $omax = $over if($over>$omax);
+  }
+  	#printf STDERR "MAX OVER = %d\n",$omax;
+  last if($omax==0);
+ }
+
+#---	print paths ----------------------------------------
+ for(my $i=0;$i<@paok;$i++){
+  my ($scor,$code,$path,$patq,$hple,$qple,$hlen,$qlen,$hh,$qq,$ev) = split/\t/,$paok[$i];
+  printf "%s\n",$paok[$i] if($hple>0 and $qple>0);
+ }
+}
+
