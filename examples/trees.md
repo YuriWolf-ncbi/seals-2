@@ -20,4 +20,4 @@ creates a tab-delimited table containing `prot_id species|prot_id`.
 ```
 tree_rename tmp.tre -t= tmp.tab
 ```
-prints out the tree in Newick format with species names, appended to the leaves.
+prints out the tree in Newick format with species names, prefixed to the leaves.
