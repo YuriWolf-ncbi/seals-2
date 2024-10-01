@@ -8,14 +8,14 @@
 ############################################################
 #	System etc
 ############################################################
-use lib "/home/wolf/perl5/lib/perl5";
+use lib $ENV{'PERL_LIB_YIW'};
 use YIW::basic;
 # uncomment the next line if better randomness is important
 # use Math::Random::MT qw/rand srand/;
 # use Digest::MD5 qw/md5_hex/;
 
-our $Pver = "0.3";
-our $Pdat = "August 21 2024";
+our $Pver = "0.4";
+our $Pdat = "August 26 2024";
 
 our ($Pnam) = ($0 =~ m/([^\/]+)$/);
 our ($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
@@ -43,6 +43,7 @@ my $idwrd = 0;
 my $delim = "[ ,;:|]";
 my $sgemin = 0x7fffffff;
 my $lazy = 0;
+my $stat = 0;
 
 ############################################################
 #	Global variables
@@ -72,6 +73,8 @@ Options:
 	-e=evalue	mmseqs search evalue limit (default $eval)
 
 	-lazy		use mmseqs result (default run hhalign)
+
+	-stat		add search stats (score and evalue)
 
 	-sge=n		run on SGE if the number of jobs>=n (default $sgemin)
 EOINPUT
@@ -105,6 +108,7 @@ $dpmm = $myOptList{"db"} if($myOptList{"db"} ne "");			# hidden alternative
 $dpmm = $myOptList{"m"} if($myOptList{"m"} ne "");
 $eval = $myOptList{"e"} + 0 if($myOptList{"e"}>0);
 $lazy = 1 if(exists $myOptList{"lazy"});
+$stat = 1 if(exists $myOptList{"stat"});
 $sgemin = int $myOptList{"sge"} if(int $myOptList{"sge"}>0);
 
 my $ffaa = shift @myGlobList;
@@ -138,7 +142,7 @@ $CMD = "run_mmsearch $ffaa -fasta -d= $dpmm -s=7.5 > $Bdir/tmp.tab"; print STDER
 $CMD = "tab_shuffle $Bdir/tmp.tab -l='2,1,4,3,7,8,5,6,9,10,11' | btab2path -p1 -e=100 | path_read_combine -e=$eval -q300=2 -o=0 | tab_best -k1=9 -k2=1 -m=2 > $Bdir/tmp.p.tab"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
 
 #---	read table -----------------------------------------
-my %q2sc = (); my %q2pr = (); my %q2fr = ();
+my %q2sc = (); my %q2ev = (); my %q2pr = (); my %q2fr = ();
 
 print STDERR "$Pnam:\tReading $Bdir/tmp.p.tab\n" if($VERBOSE);
 open HAND,"<$Bdir/tmp.p.tab" or die "$Pnam:\tCan't read \"$Bdir/tmp.p.tab\"";
@@ -147,7 +151,7 @@ while(<HAND>){
  next if(m/^\#/);
  #my ($qq,$hh,$ql,$hl,$qb,$qe,$hb,$he,$ev,$ss) = split/\t/;
  my ($ss,$cc,$patq,$patp,$lpaq,$lpap,$lq,$lp,$qq,$pp,$ev) = split/\t/;
- if($ss>$q2sc{$qq}){ $q2sc{$qq} = $ss; $q2pr{$qq} = $pp; $q2fr{$qq} = $patq;}
+ if($ss>$q2sc{$qq}){ $q2sc{$qq} = $ss; $q2ev{$qq} = $ev; $q2pr{$qq} = $pp; $q2fr{$qq} = $patq;}
 }
 close HAND;
 printf STDERR "$Pnam:\t\t%s\tqueries have hits\n",int_commify(scalar keys %q2pr) if($VERBOSE);
@@ -216,6 +220,8 @@ foreach my $ff (keys %if2o){
   next if(m/^\#/);
   my ($qq,$hh,$ql,$hl,$qb,$qe,$hb,$he,$ev,$ss) = split/\t/;
   next if($qq ne $ff);
+  my $id = $if2o{$ff};
+  $q2sc{$id} = $ss; $q2ev{$id} = $ev;
   $fr = $qb."-".$qe;
   $f2fr{$ff} = $fr;
   print HANX "$ff:$fr\n";
@@ -239,7 +245,11 @@ while(<HAND>){
  my $fr = $f2fr{$ff};
  my $id = $if2o{$ff};
  my $prof = $q2pr{$id};
- print "$id\t$fr\t$prof\t$sq\n";
+ my $ss = $q2sc{$id};
+ my $ev = $q2ev{$id};
+ print "$id\t$fr\t$prof\t$sq";
+ print "\t$ss\t$ev" if($stat);
+ print "\n";
 }
 close HAND;
 

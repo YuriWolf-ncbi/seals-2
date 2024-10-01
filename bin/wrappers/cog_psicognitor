@@ -8,14 +8,13 @@
 ############################################################
 #	System etc
 ############################################################
-#use lib "/home/wolf/perl5/lib/perl5";
-use lib $ENV{'PERL_LIB_PATH'};
+use lib $ENV{'PERL_LIB_YIW'};
 use YIW::basic;
 # uncomment the next line if better randomness is important
 # use Math::Random::MT qw/rand srand/;
 
-our $Pver = "1.7";
-our $Pdat = "March 04 2024";
+our $Pver = "1.8";
+our $Pdat = "2024-09-18";
 
 our ($Pnam) = ($0 =~ m/([^\/]+)$/);
 our ($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
@@ -361,7 +360,8 @@ if($modequi>0){
 
 #---	run commands on SGE --------------------------------
 if($nbla>=$sgemin){
- $CMD = "submitSGEfarm $Base.cmd.lst -bt=$batch -rand -work=2 > /dev/null"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
+ my $optm = ""; $optm = "-m=192 -f=128" if($modehuge);
+ $CMD = "submitSGEfarm $Base.cmd.lst -bt=$batch $optm -rand -work=2 > /dev/null"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
 }elsif($nbla>0){
  $CMD = "chmod a+x $Base.cmd.lst ; ./$Base.cmd.lst"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
 }

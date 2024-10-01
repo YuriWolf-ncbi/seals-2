@@ -8,14 +8,13 @@
 ############################################################
 #	System etc
 ############################################################
-#use lib "/home/wolf/perl5/lib/perl5";
-use lib $ENV{'PERL_LIB_PATH'};
+use lib $ENV{'PERL_LIB_YIW'};
 use YIW::basic;
 # uncomment the next line if better randomness is important
 # use Math::Random::MT qw/rand srand/;
 
-our $Pver = "0.7";
-our $Pdat = "August 05 2021";
+our $Pver = "0.8";
+our $Pdat = "March 03 2024";
 
 our ($Pnam) = ($0 =~ m/([^\/]+)$/);
 our ($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
@@ -209,6 +208,10 @@ $CMD = "cat $Base.s0";
 $CMD = "sr_scoreMatch -g= $gcon $Base.s0 | tab_select -kcut= $athr > $Base.ok ; tab_select $Base.s0 -t= $Base.ok -k2=2 -s1='\\s+'" if($athr>=0);
 $CMD .= " | sr_filter -conplus -gcon= $gcon -hcon= 0 -grcut= $gcon" unless($xcons);
 $CMD .= " > $Base.sr"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT);
+
+my $nseq = `wc -l $Base.sr` - 1;
+$dthr = -1 if($nseq<=1);
+
 #---	prepare PSSM: consensus file -----------------------
 $CMD = "fslice -b=1 -n=1 $Base.sr | sr2fa | fa_strict -l=1 > $Base.fa"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT);
 
@@ -236,8 +239,6 @@ unlink <$Base.*.tab> unless($DEBUG);
 }
 
 if($dthr>0 and $DOIT){					# IF ($dthr>0 and $DOIT)
-my $nseq = `wc -l $Base.sr` - 1;
-if($nseq>1){						# IF ($nseq>1)
 #---	prepare multiple -----------------------------------
 $CMD = "fslice -b=2 $Base.sr | sr2fa > $Base.0.fa"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT);
 $CMD = "FastTree -gamma -wag -quiet $Base.0.fa > $Base.0.ft.tre"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT);
@@ -265,7 +266,6 @@ while(<HAND>){
  $ii++;
 }
 close HAND;
-}							# ENDIF ($nseq>1)
 }							# ENDIF ($dthr>0 and $DOIT)
 
 #---	clean ----------------------------------------------

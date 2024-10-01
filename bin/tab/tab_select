@@ -15,6 +15,7 @@ $Pdat = "December 21 2014";
 ($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
 
 $Ppid = $$;	# Process ID
+our $VERBOSE = 1;
 ############################################################
 #	Definitions
 ############################################################
@@ -86,6 +87,7 @@ my_args(@ARGV);
 -t STDIN and !@myGlobList and print $Instructions and exit 0;
 push @myGlobList,"-" unless(-t STDIN);
 
+$VERBOSE = int $myOptList{"VERB"} if(exists $myOptList{"VERB"});	# hidden common option
 $fkey = $myOptList{"t"} if($myOptList{"t"} ne "");
 $rkey = 1 if(exists $myOptList{"reg"});
 $k1 = int $myOptList{"k1"} if(int $myOptList{"k1"}>0);
@@ -102,7 +104,7 @@ $cmpe = 1 if(exists $myOptList{"eq"});
 
 #---	read the key table ---------------------------------
 if($fkey ne ""){
- print STDERR "$Pnam:\tReading $fkey\n";
+ print STDERR "$Pnam:\tReading $fkey\n" if($VERBOSE);
  open HAND,"<$fkey" or die "Can't read \"$fkey\"";
  while(<HAND>){
   chomp;
@@ -116,7 +118,7 @@ if($fkey ne ""){
 
 #---	read the master table ------------------------------
 foreach my $fmas (@myGlobList){
- print STDERR "$Pnam:\tReading $fmas\n";
+ print STDERR "$Pnam:\tReading $fmas\n" if($VERBOSE);
  open HAND,"<$fmas" or die "Can't read \"$fmas\"";
  while(<HAND>){
   chomp;

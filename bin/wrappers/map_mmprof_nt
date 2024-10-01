@@ -8,14 +8,13 @@
 ############################################################
 #	System etc
 ############################################################
-#use lib "/home/wolf/perl5/lib/perl5";
-use lib $ENV{'PERL_LIB_PATH'};
+use lib $ENV{'PERL_LIB_YIW'};
 use YIW::basic;
 # uncomment the next line if better randomness is important
 # use Math::Random::MT qw/rand srand/;
 
-our $Pver = "0.1";
-our $Pdat = "August 18 2024";
+our $Pver = "0.2";
+our $Pdat = "August 26 2024";
 
 our ($Pnam) = ($0 =~ m/([^\/]+)$/);
 our ($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
@@ -36,9 +35,12 @@ our $EXITCODE = 0;
 ############################################################
 #	Definitions
 ############################################################
-$dpro = "";
-$dpmm = "";
-$eval = 100;
+my $dpro = "";
+my $dpmm = "";
+my $eval = 100;
+my $sgemin = 0x7fffffff;
+my $lazy = "";
+my $stat = "";
 
 ############################################################
 #	Global variables
@@ -68,6 +70,12 @@ Options:
 	-m=profiledb	mmseqs profile DB (MANDATORY!)
 
 	-e=evalue	mmseqs search evalue limit (default $eval)
+
+	-lazy		use mmseqs result (default run hhalign)
+	
+	-stat		add search stats (score and evalue)
+
+	-sge=n		run on SGE if the number of jobs>=n (default $sgemin)
 EOINPUT
 
 ############################################################
@@ -98,6 +106,9 @@ $dpro = $myOptList{"d"} if($myOptList{"d"} ne "");
 $dpmm = $myOptList{"db"} if($myOptList{"db"} ne "");			# hidden alternative
 $dpmm = $myOptList{"m"} if($myOptList{"m"} ne "");
 $eval = $myOptList{"e"} + 0 if($myOptList{"e"}>0);
+$lazy = "-lazy" if(exists $myOptList{"lazy"});
+$stat = "-stat" if(exists $myOptList{"stat"});
+$sgemin = int $myOptList{"sge"} if(int $myOptList{"sge"}>0);
 $VERBOSE = "0" if($VERBOSE==0);
 
 my $ffna = shift @myGlobList;
@@ -122,7 +133,7 @@ my $ffna = shift @myGlobList;
 # log_this_point($Pnam,"$Pnam\t$Ppid","started") if($VERBOSE>1);
 
 #---	translate and run ----------------------------------
-$CMD = "orf $ffna -c=6000 -f=0 -m=0 -n=3 -w=0 | fa_strict -u -l=0 -r=X > $Base.faa ; map_mmprof_aa $Base.faa -d= $dpro -m= $dpmm -VERB= $VERBOSE > $Base.tab"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
+$CMD = "orf $ffna -c=6000 -f=0 -m=0 -n=3 -w=0 -u > $Base.faa ; map_mmprof_aa $Base.faa -d= $dpro -m= $dpmm $lazy $stat -sge= $sgemin -VERB= $VERBOSE > $Base.tab"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
 
 #---	read sequence lengths ------------------------------
 my %nt2l = ();
@@ -148,12 +159,12 @@ print STDERR "$Pnam:\tReading $Base.tab\n" if($VERBOSE);
 open HAND,"<$Base.tab" or die "$Pnam:\tCan't read \"$Base.tab\"";
 while(<HAND>){
  chomp;
- my ($idaa,$frag,$prof,$sq) = split/\t/;
+ my ($idaa,$frag,@data) = split/\t/;
  my ($p1,$p2) = ($frag =~ m/^(\d+).+\b(\d+)$/);
  my ($idnt,$fram) = ($idaa =~ m/^(.+)_fr(\d+)$/);
  my $x1 = coord_map($p1,0,$fram,$nt2l{$idnt});
  my $x2 = coord_map($p2,1,$fram,$nt2l{$idnt});
- printf "%s\t%d-%d\t%s\t%s\n",$idnt,$x1,$x2,$prof,$sq;
+ printf "%s\t%d-%d\t%s\n",$idnt,$x1,$x2,(join "\t",@data);
 }
 close HAND;
 

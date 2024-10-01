@@ -8,14 +8,13 @@
 ############################################################
 #	System etc
 ############################################################
-#use lib "/home/wolf/perl5/lib/perl5";
-use lib $ENV{'PERL_LIB_PATH'};
+use lib $ENV{'PERL_LIB_YIW'};
 use YIW::basic;
 # uncomment the next line if better randomness is important
 # use Math::Random::MT qw/rand srand/;
 
-our $Pver = "2.1";
-our $Pdat = "September 25 2020";
+our $Pver = "2.2";
+our $Pdat = "March 19 2024";
 
 our ($Pnam) = ($0 =~ m/([^\/]+)$/);
 our ($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
@@ -188,9 +187,13 @@ my $name = shift @myGlobList;
 # log_this_point($Pnam,"$Pnam\t$Ppid","started") if($VERBOSE>1);
 
 #---	prepare commands -----------------------------------
+my $dbop = "";
+foreach my $dbxx (split/[, ]/,$hnam){
+ $dbop .= " -d $dbxx";
+}
 print STDERR "$Pnam:\tProcessing $dcor/$name.$sali\n";
 $CMD = "ali_prep4search $name -d=$dcor $fasta $xcons -athr=$athr -gcon=$gcon -sali=$sali -VERB=0 > $Base.$name.FASTA";
-$CMD .= " ; hhsearch -i $Base.$name.FASTA -d $hnam -id 100 -diff inf -M first -maxres $verylong -e $eval $optglob -name $name -v 0 -Z $verymany -z 0 -B $showmany -b 0 -p $minprob -o $Base.$name.txt > /dev/null";
+$CMD .= " ; hhsearch -i $Base.$name.FASTA $dbop -id 100 -diff inf -M first -maxres $verylong -e $eval $optglob -name $name -v 0 -Z $verymany -z 0 -B $showmany -b 0 -p $minprob -o $Base.$name.txt > /dev/null";
 
 #---	run commands ---------------------------------------
 print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
