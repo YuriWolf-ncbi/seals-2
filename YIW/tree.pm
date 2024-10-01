@@ -98,7 +98,7 @@ sub read_newick
 
 ############################################################
 #	process_newick($rnod,$line,$EPSILON)
-#	February 19 2020
+#	2024-09-17
 ############################################################
 sub process_newick
 {
@@ -106,7 +106,7 @@ sub process_newick
  my $line = shift;
  my $EPSILON = shift;
 
- my ($head) = ($line=~m/^(\[.+\])/);	# get header
+ my ($head) = ($line=~m/^\[(.+)\]/);	# get header
  $$rnod{"head"} = $head if($head ne "");
  
  $line =~ s/^\[.+\]\s*//;		# clean header
@@ -632,16 +632,17 @@ sub tree_weight
  
  tree_height($rnod);
  
- my $tble = tree_collect_tbl($rnod,$wadd);
+ tree_collect_tbl($rnod,$wadd);			# with leaf bonuses
  
  my $wxxx = $wsum;
  $wxxx = 100 if($wsum<=0);
 
  tree_collect_wt($rnod,$wxxx);
  
+ my $tble = tree_collect_tbl($rnod,0);		# clean
  my $hsum = 0; tree_collect_sumheight($rnod,\$hsum);
  my $have = 0; $have = $hsum/$wxxx;
- my $neff = 1; $neff = $$rnod{"tbl"}/$have if($$rnod{"tbl"}>0 and $have>0);
+ my $neff = 1; $neff = $tble/$have if($tble>0 and $have>0);
   
  $$rnod{"avhi"} = $have;
  $$rnod{"neff"} = $neff;

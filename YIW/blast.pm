@@ -5,8 +5,7 @@ package YIW::blast;
 ############################################################
 use strict;
 #use warnings;
-#use lib "/home/wolf/perl5/lib/perl5";
-use lib $ENV{'PERL_LIB_PATH'};
+use lib "/home/wolf/perl5/lib/perl5";
 use YIW::basic;
 
 BEGIN {
@@ -45,9 +44,9 @@ return 1;
 ############################################################
 #	blast_read_btab($fnam,$ethr,$qwrd,$hwrd,$rdat,$rlen,$q300,$fpl1)
 ############################################################
-# assumes -outfmt "7 qseqid sseqid qlen slen qstart qend sstart send evalue bitscore"
+# assumes -outfmt "7 qseqid sseqid qlen slen qstart qend sstart send evalue bitscore ..."
 # puts arrays of hits for query-subject tab-delimited pairs into %$rdat as
-#	$ss,$qb,$qe,$hb,$he,$ev
+#	$ss,$qb,$qe,$hb,$he,$ev,...
 # $fpl1 increments all coordinates (MMSEQS2)
 # puts query and subject lengths into %$rlen
 sub blast_read_btab
@@ -65,7 +64,7 @@ sub blast_read_btab
  while(<HAND>){
   chomp;
   next if(m/^\#/);
-  my ($qq,$hh,$ql,$hl,$qb,$qe,$hb,$he,$ev,$ss) = split/\t/;
+  my ($qq,$hh,$ql,$hl,$qb,$qe,$hb,$he,$ev,$ss,@xdat) = split/\t/;
   next if($ss<=0 or $ql<=0);
   my $elim = $ethr; $elim *= (300/$ql)**$q300 if($q300>0);
   next if($ev>$elim);
@@ -78,7 +77,7 @@ sub blast_read_btab
   my $qqhh = join "\t",($qid,$hid);
   if($$rdat{$qqhh} eq ""){ my @tmp = (); $$rdat{$qqhh} = \@tmp;}
   my $rhit = $$rdat{$qqhh};
-  push @$rhit,(join "\t",($ss,$qb,$qe,$hb,$he,$ev));
+  push @$rhit,(join "\t",($ss,$qb,$qe,$hb,$he,$ev,@xdat));
   $$rlen{$qid} = $ql + 0;
   $$rlen{$hid} = $hl + 0;
  }
@@ -89,7 +88,7 @@ sub blast_read_btab
 #	blast_process_hits($qq,$hh,$ql,$hl,$rhit,$othr,$wbas,$dquo,$cthr,$gmax,$fraw)
 ############################################################
 # reads array of hits for query-subject pair as read by blast_read_btab()
-#	$ss,$qb,$qe,$hb,$he,$ev
+#	$ss,$qb,$qe,$hb,$he,$ev,...
 # sorts @$rhit by score
 # returns ($scor,$code,$patq,$path,$qple,$hple,$eval) array
 # segmented paths are segmented in both query and subject
