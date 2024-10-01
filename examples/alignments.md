@@ -15,4 +15,4 @@ converts the `protset.afa` alignment into the "seqrows" format (`prot_id sequenc
 ```
 fa2sr -w=0 protset.afa | tab_select -t= tmp.tab -k1=1 -k2=2 | sr_filter -grcut=0.5 -hocut= 0.1 | sr2fa > prot_for_tree.afa
 ```
-converts the `protset.afa` alignment into the "seqrows" format (`prot_id sequence`), selects sequences matching the `tmp.tab` table, removes sites with the (weighted) gap content over 0.5 and [homogeneity](https://doi.org/10.1093/ve/veab015) below 0.1, converts the alignment back to FASTA format and saves `prot_for_tree.afa` file.
+converts the `protset.afa` alignment into the "seqrows" format (`prot_id sequence`), selects sequences matching the `tmp.tab` table, removes sites [with](https://doi.org/10.1093/ve/veab015) the (weighted) gap content over 0.5 and homogeneity below 0.1, converts the alignment back to FASTA format and saves `prot_for_tree.afa` file.
