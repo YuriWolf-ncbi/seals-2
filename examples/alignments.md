@@ -1,4 +1,14 @@
 # seals-2 working with alignments
+## Preparing an alignment for converting to HMM or PSSM
+### Source data:
+### Source data:
+`protset.afa` aligned protein sequences in FASTA format.
+### Command:
+```
+fa2sr -w=0 protset.afa | sr_filter -conplus -hcon=0 -gcon=0.5 -ncon='protset' -grcut=0.5 | sr2fa > profile.FASTA
+```
+converts the `protset.afa` alignment into the "seqrows" format (`prot_id sequence`), adds consensus to sites [with](https://doi.org/10.1093/ve/veab015) the (weighted) gap content no more than 0.5 and name "protset"; removes sites with the (weighted) gap content over 0.5, converts the alignment back to FASTA format and saves `profile.FASTA` file.
+
 ## Preparing an alignment for tree reconstruction
 ### Source data:
 `protset.afa` aligned protein sequences in FASTA format.
