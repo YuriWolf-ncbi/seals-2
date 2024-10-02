@@ -1,0 +1,137 @@
+#!/usr/bin/perl
+
+############################################################
+#	Template:	0.2, May 02 2002
+#	Parent Path:	/net/gloin/export/home/wolf/bin/???
+############################################################
+
+############################################################
+#	System etc
+############################################################
+$Pver = "0.1";
+$Pdat = "July 01 2008";
+
+($Pnam) = ($0 =~ m/([^\/]+)$/);
+($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
+
+$Ppid = $$;	# Process ID
+############################################################
+#	Definitions
+############################################################
+$ipref = "";
+$sloppy = 0;
+
+############################################################
+#	Global variables
+############################################################
+
+############################################################
+#	Instructions etc
+############################################################
+$Instructions = <<EOINPUT;
+
+$Path/$Pnam $Pver, $Pdat
+
+Use: $Pnam name [options]
+
+PHYLIP (interleaved) to FASTA.
+
+Options:
+
+	-p=pref		add prefix pref to the sequence ID
+			(e.g. "lcl|" or "gi|")
+
+	-sloppy		skip test for sequence length and ID uniqueness
+EOINPUT
+
+############################################################
+#	code start
+############################################################
+
+#---	get and process arguments --------------------------
+my_args(@ARGV);
+-t STDIN and !@myGlobList and print $Instructions and exit 0;
+push @myGlobList,"-" unless(-t STDIN);
+
+$ipref = $myOptList{"p"} if(exists $myOptList{"p"});
+$sloppy = 1 if(exists $myOptList{"sloppy"});
+
+foreach my $name (@myGlobList){
+ open HAND,"<$name" or die "Can't read \"$name\"";
+ my $tmp = <HAND>;
+ my ($nseq,$lali) = ($tmp =~ m/(\d+)\s+(\d+)/);
+ my @lnam = ();my @lseq = ();
+ my $cnts = 0;
+ while(<HAND>){
+  chomp;
+  my ($sid,$seq) = m/^(\S*)\s+(\S.*)/;
+  $seq =~ tr/ \t//d;
+  next unless(length $seq);
+  $lnam[$cnts] .= $sid;
+  $lseq[$cnts] .= $seq;
+  $cnts++; $cnts = 0 if($cnts>=$nseq);
+ }
+ close HAND;
+ 
+ unless($sloppy){
+  my %names = ();
+  for(my $i=0;$i<$nseq;$i++){
+   die "sequence ID \"$lseq[$i]\" is not unique" if($names{$lseq[$i]});
+   $names{$lids[$i]} = 1;
+  }
+  for(my $i=0;$i<$nseq;$i++){
+   die "length of sequence #$i is not $lali" if((length $lseq[$i])!=$lali);
+  }
+ }
+
+ for(my $i=0;$i<$nseq;$i++){
+  printf ">%s%s\n%s\n",$ipref,$lnam[$i],$lseq[$i];
+ }
+}
+
+############################################################
+#	max min
+############################################################
+sub max
+{
+ my $max = shift;
+ while(@_){
+  my $x = shift;
+  $max = $x if($x>$max);
+ }
+ return $max;
+}
+
+sub min
+{
+ my $min = shift;
+ while(@_){
+  my $x = shift;
+  $min = $x if($x<$min);
+ }
+ return $min;
+}
+
+
+############################################################
+#	my_args
+############################################################
+sub my_args
+{
+ my $nop = scalar @_;
+ for($i=0;$i<$nop;$i++){
+  if($_[$i]=~m/^-[^=]+=$/){
+   my $new = $_[$i].$_[$i+1];
+   splice @_,$i,2,$new;
+  }
+ }
+ foreach my $arg (@_){
+  my ($opt) = ($arg =~ m/^-(\w+)/);
+  my ($val) = ($arg =~ m/^-\w+=(.*)/);
+  if($opt){
+   $myOptList{$opt} = $val;
+  }else{
+   push @myGlobList,$arg;
+  }
+ }
+}

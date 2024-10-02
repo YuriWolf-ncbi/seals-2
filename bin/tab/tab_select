@@ -1,0 +1,207 @@
+#!/usr/bin/perl
+
+############################################################
+#	Template:	0.3, November 04 2004
+#	Parent Path:	/net/gloin/export/home/wolf/bin/???
+############################################################
+
+############################################################
+#	System etc
+############################################################
+$Pver = "0.4";
+$Pdat = "December 21 2014";
+
+($Pnam) = ($0 =~ m/([^\/]+)$/);
+($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
+
+$Ppid = $$;	# Process ID
+our $VERBOSE = 1;
+############################################################
+#	Definitions
+############################################################
+$k1 = 1;
+$k2 = 1;
+$icom = 0;
+$flip = 0;
+$ldeli1 = "\t";
+$ldeli2 = "\t";
+#$jdelim = "\t";	# no delimiters - format preserved!
+$kbar = +1e+300;
+$kcut = -1e+300;
+$rexp = "";
+$fkey = "";
+$rkey = 0;
+$cmpe = 0;
+
+############################################################
+#	Global variables
+############################################################
+%tkey;
+
+############################################################
+#	Instructions etc
+############################################################
+$Instructions = <<EOINPUT;
+
+$Path/$Pnam $Pver, $Pdat
+
+Use: $Pnam master-table -t=key-table [options]
+
+Selects rows from the master-table by keys in key-table; 
+
+Options:
+
+	-t=file		key-table file (if not, use -kbar and -kcut)
+	
+	-reg		key table entries are regexps
+
+	-k1=n		use n-th field of the master as the data (default $k1)
+
+	-k2=n		use n-th field of the addition as the data (default $k2)
+
+	-n		select entries NOT in the list of keys
+
+	-kcut=x		lower cutoff for a numeric key (if no key-file)
+
+	-kbar=x		upper cutoff for a numeric key (if no key-file)
+
+	-r=regex	regular expression for a string key (if no key-file)
+
+	-eq		select entries with -k1 identical to -k2
+
+	-comm=n		lines starting with \"\#\" (default - pass through)
+			1 - skip
+			2 - treat as normal
+
+	-s1=\"delim\"	delimiters to split line in master (default \"\\t\")
+
+	-s2=\"delim\"	delimiters to split line in key (default \"\\t\")
+EOINPUT
+
+############################################################
+#	code start
+############################################################
+
+#---	get and process arguments --------------------------
+my_args(@ARGV);
+-t STDIN and !@myGlobList and print $Instructions and exit 0;
+push @myGlobList,"-" unless(-t STDIN);
+
+$VERBOSE = int $myOptList{"VERB"} if(exists $myOptList{"VERB"});	# hidden common option
+$fkey = $myOptList{"t"} if($myOptList{"t"} ne "");
+$rkey = 1 if(exists $myOptList{"reg"});
+$k1 = int $myOptList{"k1"} if(int $myOptList{"k1"}>0);
+$k2 = int $myOptList{"k2"} if(int $myOptList{"k2"}>0);
+$kcut = $myOptList{"kcut"} + 0 if($myOptList{"kcut"} ne "");
+$kbar = $myOptList{"kbar"} + 0 if($myOptList{"kbar"} ne "");
+$rexp = $myOptList{"r"} if($myOptList{"r"} ne "");
+$flip = 1 if(exists $myOptList{"n"});
+$icom = int $myOptList{"comm"} if(int $myOptList{"comm"}>0);
+$ldeli1 = $myOptList{"s1"} if($myOptList{"s1"} ne "");
+$ldeli2 = $myOptList{"s2"} if($myOptList{"s2"} ne "");
+$cmpe = 1 if(exists $myOptList{"eq"});
+#$jdelim = $myOptList{"j"} if($myOptList{"j"} ne "");
+
+#---	read the key table ---------------------------------
+if($fkey ne ""){
+ print STDERR "$Pnam:\tReading $fkey\n" if($VERBOSE);
+ open HAND,"<$fkey" or die "Can't read \"$fkey\"";
+ while(<HAND>){
+  chomp;
+  if(m/^\#/ and $icom<2){ next;}
+  my @token = split/$ldeli2/;
+  my $kk = $token[$k2-1];
+  $tkey{$kk} = 1;
+ }
+ close HAND;
+}
+
+#---	read the master table ------------------------------
+foreach my $fmas (@myGlobList){
+ print STDERR "$Pnam:\tReading $fmas\n" if($VERBOSE);
+ open HAND,"<$fmas" or die "Can't read \"$fmas\"";
+ while(<HAND>){
+  chomp;
+  if(m/^\#/){ print "$_\n" if($icom==0); next if($icom<2);}
+  my @token = split/$ldeli1/;
+  my $kk = $token[$k1-1];
+  if($fkey ne ""){				# by key table
+   if($rkey==0){
+    print "$_\n" if($flip+$tkey{$kk}==1);
+   }else{
+    print "$_\n" if($flip+match_token(\%tkey,$kk)==1);
+   }
+  }else{					# no key table
+   if($rexp ne ""){					# by regular expression
+   									#printf STDERR "%s=~m/%s/\n",$kk,$rexp;
+    print "$_\n" if($flip+($kk=~m/$rexp/)==1);
+   }elsif($cmpe>0){					# by key comparison
+    print "$_\n" if($flip+int($kk eq $token[$k2-1])==1);
+   }else{						# by numeric limits
+    print "$_\n" if($kk>=$kcut and $kk<=$kbar);
+   }
+  }
+ }
+ close HAND;
+}
+
+############################################################
+#	match_token($rtab,$toke)
+############################################################
+sub match_token
+{
+ my $rtab = shift;
+ my $toke = shift;
+ 
+ foreach my $rexp (keys %$rtab){
+  return 1 if($toke=~m/$rexp/);
+ }
+ return 0;
+}
+
+############################################################
+#	max min
+############################################################
+sub max
+{
+ my $max = shift;
+ while(@_){
+  my $x = shift;
+  $max = $x if($x>$max);
+ }
+ return $max;
+}
+
+sub min
+{
+ my $min = shift;
+ while(@_){
+  my $x = shift;
+  $min = $x if($x<$min);
+ }
+ return $min;
+}
+
+
+############################################################
+#	my_args
+############################################################
+sub my_args
+{
+ my $nop = scalar @_;
+ for($i=0;$i<$nop;$i++){
+  if($_[$i]=~m/^-[^=]+=$/){
+   my $new = $_[$i].$_[$i+1];
+   splice @_,$i,2,$new;
+  }
+ }
+ foreach my $arg (@_){
+  my ($opt) = ($arg =~ m/^-(\w+)/);
+  my ($val) = ($arg =~ m/^-\w+=(.*)/);
+  if($opt){
+   $myOptList{$opt} = $val;
+  }else{
+   push @myGlobList,$arg;
+  }
+ }
+}

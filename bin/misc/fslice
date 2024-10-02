@@ -1,0 +1,105 @@
+#!/usr/bin/perl
+
+
+############################################################
+#
+############################################################
+
+############################################################
+#	some pre-defined things for short
+############################################################
+$Pver = "0.1";
+$Pdat = "Dec 16 1999";
+
+($Pnam) = ($0 =~ m/([^\/]+)$/);
+($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);
+
+
+############################################################
+#	global variables
+############################################################
+$beg = 1;
+$end = 0x7fffffff;
+
+$instructions =  <<EOINPUT;
+
+$Pnam $Pver, $Pdat
+
+Use:
+
+	$Pnam [options] <files>
+
+Options:
+
+	-b=<num>	line to start (default $beg)
+
+	-e=<num>	line to finish (default $end)
+
+	-n=<num>	number of lines (overrides -e)
+EOINPUT
+
+############################################################
+#	code start
+############################################################
+
+my_args(@ARGV);
+
+-t STDIN and !@myGlobList and print $instructions and exit 0;
+
+$beg = $myOptList{"b"} if($myOptList{"b"}>0);
+$end = $myOptList{"e"} if($myOptList{"e"}>0);
+$end = $beg + $myOptList{"n"} - 1 if($myOptList{"n"}>0);
+
+push @myGlobList,"-" unless(-t STDIN);
+
+foreach my $fn (@myGlobList){
+ open HAND,"<$fn" or print STDERR "Can't open $fn\n";
+ my $cnt = 0;
+ while(<HAND>){
+  $cnt++;
+  next if($cnt<$beg);
+  last if($cnt>$end);
+  print $_;
+ }
+ close HAND;
+}
+
+sub max
+{
+ my $max = shift;
+ while(@_){
+  my $x = shift;
+  $max = $x if($x>$max);
+ }
+ return $max;
+}
+
+sub min
+{
+ my $min = shift;
+ while(@_){
+  my $x = shift;
+  $min = $x if($x<$min);
+ }
+ return $min;
+}
+
+sub my_args
+{
+ my $nop = scalar @_;
+ for($i=0;$i<$nop;$i++){
+  if($_[$i]=~m/^-[^=]+=$/){
+   my $new = $_[$i].$_[$i+1];
+   splice @_,$i,2,$new;
+  }
+ }
+ foreach my $arg (@_){
+  my ($opt) = ($arg =~ m/^-(\w+)/);
+  my ($val) = ($arg =~ m/^-\w+=(.*)/);
+  if($opt){
+   $myOptList{$opt} = $val;
+  }else{
+   push @myGlobList,glob $arg;
+  }
+ }
+}

@@ -1,0 +1,178 @@
+#!/usr/bin/perl
+
+############################################################
+#	Template:	0.3, November 04 2004
+#	Parent Path:	/net/gloin/export/home/wolf/bin/???
+############################################################
+
+############################################################
+#	System etc
+############################################################
+$Pver = "0.1";
+$Pdat = "Apr 13 2012";
+
+($Pnam) = ($0 =~ m/([^\/]+)$/);
+($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
+
+$PID = $$;	# Process ID
+############################################################
+#	Definitions
+############################################################
+$suff = "sr";
+$pref = "";
+$adir = ".";
+$sepa = "_";
+$DEBUG = 0;
+$word = 1;
+
+############################################################
+#	Global variables
+############################################################
+
+############################################################
+#	Instructions etc
+############################################################
+$Instructions = <<EOINPUT;
+
+$Path/$Pnam $Pver, $Pdat
+
+Use: $Pnam protfile specfile [options]
+
+Assembles alignments from seqrows alignments in $adir/$pref*.$suff
+by the protein list and the species list. Sequence names must be
+prefixed by species name separated by \"$sepa\".
+
+Options:
+
+	-d=adir		alignment directory (default \"$adir\")
+
+	-s=suff		suffix for the files (default \"$suff\")
+
+	-p=pref		prefix for the files (default \"$pref\")
+
+	-w=n		species position in the name (default \"$word\")
+
+	-x=sep		separator for the names (default \"$sepa\")
+EOINPUT
+
+############################################################
+#	code start
+############################################################
+
+#---	get and process arguments --------------------------
+my_args(@ARGV);
+@myGlobList<2 and print $Instructions and exit 0;
+
+$protfile = shift @myGlobList;
+$specfile = shift @myGlobList;
+
+$adir = $myOptList{"d"} if(exists $myOptList{"d"});
+$suff = $myOptList{"s"} if(exists $myOptList{"s"});
+$pref = $myOptList{"p"} if(exists $myOptList{"p"});
+$sepa = $myOptList{"x"} if(exists $myOptList{"x"});
+$word = int $myOptList{"w"} if(int $myOptList{"w"}>0);
+
+open HAND,"<$specfile" or die "Can't open \"$specfile\"";
+while(<HAND>){
+ chomp;
+ my ($sp) = split/\s+/;
+ $speclist{$sp} = 1;
+ push @specarr,$sp;
+}
+close HAND;
+
+open HAND,"<$protfile" or die "Can't open \"$protfile\"";
+while(<HAND>){
+ chomp;
+ my ($pr) = split/\s+/;
+ push @protlist,$pr;
+}
+close HAND;
+
+$cnt = 2;
+foreach my $prot (@protlist){
+ print STDERR "Reading $adir/$pref$prot.$suff\n";
+ open HAND,"<$adir/$pref$prot.$suff" or die "Can't open \"$adir/$pref$prot.$suff\"";
+ my $alilen;
+ while(<HAND>){
+  chomp;
+  next unless(length);
+  my ($nam,$seq) = split/\s+/;
+  #my ($gen) = ($nam =~ m/^([^$sepa]+)$sepa/);
+  my ($gen) = (split/$sepa/,$nam)[$word-1];
+  my $slen = length $seq;
+  	# printf STDERR "[$nam]\t[$gen]\n";
+  if($alilen){
+   die "Unequal sequence lengths" if($slen != $alilen);
+  }else{
+   $alilen = $slen;
+  }
+  if($speclist{$gen}){
+   next if($speclist{$gen}>=$cnt);
+   print STDERR "Added\t$prot\t$gen\n" if($DEBUG);
+   $ali{$gen} .= $seq;
+   $speclist{$gen}++;
+  }
+ }
+ close HAND;
+ foreach my $gen (keys %speclist){
+  next if($speclist{$gen} >= $cnt);
+  print STDERR "\tSkipped\t".$gen."\n";
+  for(my $i=0;$i<$alilen;$i++){ $ali{$gen} .= "-";}
+  $speclist{$gen}++;
+ }
+ $cnt++;
+}
+
+foreach my $gen (@specarr){
+ print STDERR $gen."\t".(length $ali{$gen})."\n";
+ print $gen."\t".$ali{$gen}."\n";
+}
+
+
+############################################################
+#	max min
+############################################################
+sub max
+{
+ my $max = shift;
+ while(@_){
+  my $x = shift;
+  $max = $x if($x>$max);
+ }
+ return $max;
+}
+
+sub min
+{
+ my $min = shift;
+ while(@_){
+  my $x = shift;
+  $min = $x if($x<$min);
+ }
+ return $min;
+}
+
+
+############################################################
+#	my_args
+############################################################
+sub my_args
+{
+ my $nop = scalar @_;
+ for($i=0;$i<$nop;$i++){
+  if($_[$i]=~m/^-[^=]+=$/){
+   my $new = $_[$i].$_[$i+1];
+   splice @_,$i,2,$new;
+  }
+ }
+ foreach my $arg (@_){
+  my ($opt) = ($arg =~ m/^-(\w+)/);
+  my ($val) = ($arg =~ m/^-\w+=(.*)/);
+  if($opt){
+   $myOptList{$opt} = $val;
+  }else{
+   push @myGlobList,$arg;
+  }
+ }
+}

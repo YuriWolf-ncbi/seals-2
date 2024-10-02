@@ -1,0 +1,147 @@
+#!/usr/bin/perl
+
+############################################################
+#	Template:	0.2, May 02 2002
+#	Parent Path:	/net/gloin/export/home/wolf/bin/???
+############################################################
+
+############################################################
+#	System etc
+############################################################
+$Pver = "0.1";
+$Pdat = "June 29 2013";
+
+($Pnam) = ($0 =~ m/([^\/]+)$/);
+($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
+
+############################################################
+#	Definitions
+############################################################
+$block = 80;
+$idpad = 0;
+$sloppy = 0;
+
+############################################################
+#	Global variables
+############################################################
+@lids;%id2sq;
+
+############################################################
+#	Instructions etc
+############################################################
+$Instructions = <<EOINPUT;
+
+$Path/$Pnam $Pver, $Pdat
+
+Use: $Pnam name [options]
+
+interleaved.to seqrows
+
+Options:
+
+	-i=n		pad IDs by spaces to length n (<0 to truncate)
+
+	-sloppy		skip test for sequence length and ID uniqueness
+EOINPUT
+
+############################################################
+#	code start
+############################################################
+
+#---	get and process arguments --------------------------
+my_args(@ARGV);
+-t STDIN and !@myGlobList and print $Instructions and exit 0;
+push @myGlobList,"-" unless(-t STDIN);
+
+$idpad = $myOptList{"i"} if($myOptList{"i"}>0);
+$sloppy = 1 if(exists $myOptList{"sloppy"});
+
+foreach my $name (@myGlobList){
+ open HAND,"<$name" or die "Can't read \"$name\"";
+ while(<HAND>){
+  chomp;
+  next unless(m/^\w/);
+  my ($sid,$seq)=split /\s+/;
+  next if($sid=~m/MUSCLE|CLUSTAL|MAFFT/i);
+  $id2sq{$sid} .= $seq;
+ }
+ close HAND;
+}
+
+my @lids = sort keys %id2sq;
+my @lidx = @lids;
+my $nseq = @lids;
+my $lali = length $id2sq{$lids[0]};
+
+unless($sloppy){
+ for(my $i=1;$i<$nseq;$i++){
+  my $lseq = length $id2sq{$lids[$i]};
+  die "length of sequence $lids[$i] is not $lali" if($lseq!=$lali);
+ }
+}
+
+my $deli = "\t";
+if($idpad>0){
+ for(my $i=0;$i<$nseq;$i++){
+  my $llid = length $lids[$i];
+  my $npad = $idpad - $llid;
+  for(my $j=0;$j<$npad;$j++){ $lidx[$i] .= " ";}
+ }
+ $deli = " ";
+}elsif($idpad<0){
+ $idpad = -$idpad;
+ for(my $i=0;$i<$nseq;$i++){
+  $lidx[$i] = substr($lids[$i],0,$idpad);
+ }
+}
+
+for(my $i=0;$i<$nseq;$i++){
+ printf "%s%s%s\n",$lidx[$i],$deli,$id2sq{$lids[$i]};
+}
+
+############################################################
+#	max min
+############################################################
+sub max
+{
+ my $max = shift;
+ while(@_){
+  my $x = shift;
+  $max = $x if($x>$max);
+ }
+ return $max;
+}
+
+sub min
+{
+ my $min = shift;
+ while(@_){
+  my $x = shift;
+  $min = $x if($x<$min);
+ }
+ return $min;
+}
+
+
+############################################################
+#	my_args
+############################################################
+sub my_args
+{
+ my $nop = scalar @_;
+ for($i=0;$i<$nop;$i++){
+  if($_[$i]=~m/^-[^=]+=$/){
+   my $new = $_[$i].$_[$i+1];
+   splice @_,$i,2,$new;
+  }
+ }
+ foreach my $arg (@_){
+  my ($opt) = ($arg =~ m/^-(\w+)/);
+  my ($val) = ($arg =~ m/^-\w+=(.*)/);
+  if($opt){
+   $myOptList{$opt} = $val;
+  }else{
+   push @myGlobList,$arg;
+  }
+ }
+}

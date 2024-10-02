@@ -1,0 +1,120 @@
+#!/usr/bin/perl
+
+############################################################
+#	Template:	0.2, May 02 2002
+#	Parent Path:	/net/gloin/export/home/wolf/bin/???
+############################################################
+
+############################################################
+#	System etc
+############################################################
+$Pver = "0.4";
+$Pdat = "February 08 2021";
+
+($Pnam) = ($0 =~ m/([^\/]+)$/);
+($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
+
+############################################################
+#	Definitions
+############################################################
+$rpatt = "";
+$recsep = "\n";
+
+############################################################
+#	Global variables
+############################################################
+
+############################################################
+#	Instructions etc
+############################################################
+$Instructions = <<EOINPUT;
+
+$Path/$Pnam $Pver, $Pdat
+
+Use: $Pnam name -r=regexp [options]
+
+Outputs regexp pattern
+
+Options:
+
+	-r=regexp	pattern
+
+	-s=regexp	separator (default \\n)
+EOINPUT
+
+############################################################
+#	code start
+############################################################
+
+#---	get and process arguments --------------------------
+my_args(@ARGV);
+-t STDIN and !@myGlobList and print $Instructions and exit 0;
+push @myGlobList,"-" unless(-t STDIN);
+
+$rpatt = $myOptList{"r"} if(exists $myOptList{"r"});
+$recsep = $myOptList{"s"} if(exists $myOptList{"s"});
+
+foreach my $xarg (@myGlobList){
+ my @xglo = glob $xarg;
+ foreach my $name (@xglo){
+  my $savedel = $/;
+  $/ = $recsep;
+  open HAND,"<$name" or die "Can't read \"$name\"";
+  while(<HAND>){
+  	#print "[\n$_\n]\n";
+   chomp;
+   my @res = (m/$rpatt/gs);
+   my $out = join "\t",@res;
+   print "$out\n" if($out ne "");
+  }
+  close HAND;
+  $/ = $savedel;
+ }
+}
+
+############################################################
+#	max min
+############################################################
+sub max
+{
+ my $max = shift;
+ while(@_){
+  my $x = shift;
+  $max = $x if($x>$max);
+ }
+ return $max;
+}
+
+sub min
+{
+ my $min = shift;
+ while(@_){
+  my $x = shift;
+  $min = $x if($x<$min);
+ }
+ return $min;
+}
+
+
+############################################################
+#	my_args
+############################################################
+sub my_args
+{
+ my $nop = scalar @_;
+ for($i=0;$i<$nop;$i++){
+  if($_[$i]=~m/^-[^=]+=$/){
+   my $new = $_[$i].$_[$i+1];
+   splice @_,$i,2,$new;
+  }
+ }
+ foreach my $arg (@_){
+  my ($opt) = ($arg =~ m/^-(\w+)/);
+  my ($val) = ($arg =~ m/^-\w+=(.*)/);
+  if($opt){
+   $myOptList{$opt} = $val;
+  }else{
+   push @myGlobList,$arg;
+  }
+ }
+}

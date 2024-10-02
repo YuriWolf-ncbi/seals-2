@@ -1,0 +1,126 @@
+#!/usr/bin/perl
+
+############################################################
+#	Template:	0.3, November 04 2004
+#	Parent Path:	/net/gloin/export/home/wolf/bin/???
+############################################################
+
+############################################################
+#	System etc
+############################################################
+$Pver = "0.2";
+$Pdat = "August 01 2014";
+
+($Pnam) = ($0 =~ m/([^\/]+)$/);
+($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
+
+$Ppid = $$;	# Process ID
+############################################################
+#	Definitions
+############################################################
+$icom = 0;
+$jdelim = "\t";
+$regh = "^=+\\s+(\\S+)";
+
+############################################################
+#	Global variables
+############################################################
+%ag01; %ag02; %ag04;
+
+############################################################
+#	Instructions etc
+############################################################
+$Instructions = <<EOINPUT;
+
+$Path/$Pnam $Pver, $Pdat
+
+Use: $Pnam source-table [options]
+
+Reads the table, adds regexp from the special header line
+as the 1st column
+
+Options:
+
+	-r=reg		header regexp (default \"^=+\\s+(\\S+)\")
+
+	-comm=n		lines starting with \"\#\" (default - pass through)
+			1 - skip
+			2 - treat as normal
+
+	-j=\"delim\"	delimiter to join line (default \"\\t\")
+EOINPUT
+
+############################################################
+#	code start
+############################################################
+
+#---	get and process arguments --------------------------
+my_args(@ARGV);
+-t STDIN and !@myGlobList and print $Instructions and exit 0;
+push @myGlobList,"-" unless(-t STDIN);
+
+$icom = int $myOptList{"comm"} if(int $myOptList{"comm"}>0);
+$jdelim = $myOptList{"j"} if($myOptList{"j"} ne "");
+$regh = $myOptList{"r"} if($myOptList{"r"} ne "");
+
+#---	read the source table ------------------------------
+foreach my $fmas (@myGlobList){
+ my $head = "";
+ #print STDERR "$Pnam:\tReading $fmas\n";
+ open HAND,"<$fmas" or die "Can't read \"$fmas\"";
+ while(<HAND>){
+  chomp;
+  if(m/^\#/){ print "$_\n" if($icom==0); next if($icom<2);}
+  my ($hh) = m/$regh/;
+  if($hh ne ""){ $head = $hh; next;}
+  printf "%s%s%s\n",$head,$jdelim,$_;
+ }
+ close HAND;
+}
+
+############################################################
+#	max min
+############################################################
+sub max
+{
+ my $max = shift;
+ while(@_){
+  my $x = shift;
+  $max = $x if($x>$max);
+ }
+ return $max;
+}
+
+sub min
+{
+ my $min = shift;
+ while(@_){
+  my $x = shift;
+  $min = $x if($x<$min);
+ }
+ return $min;
+}
+
+
+############################################################
+#	my_args
+############################################################
+sub my_args
+{
+ my $nop = scalar @_;
+ for($i=0;$i<$nop;$i++){
+  if($_[$i]=~m/^-[^=]+=$/){
+   my $new = $_[$i].$_[$i+1];
+   splice @_,$i,2,$new;
+  }
+ }
+ foreach my $arg (@_){
+  my ($opt) = ($arg =~ m/^-(\w+)/);
+  my ($val) = ($arg =~ m/^-\w+=(.*)/);
+  if($opt){
+   $myOptList{$opt} = $val;
+  }else{
+   push @myGlobList,$arg;
+  }
+ }
+}
