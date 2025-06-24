@@ -15,7 +15,7 @@ use YIW::basic;
 # use Digest::MD5 qw/md5_hex/;
 
 our $Pver = "0.4";
-our $Pdat = "August 26 2024";
+our $Pdat = "2024-11-08";
 
 our ($Pnam) = ($0 =~ m/([^\/]+)$/);
 our ($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
@@ -207,7 +207,7 @@ my $njob = scalar keys %if2o;
 if($njob<$sgemin){
  $CMD = "chmod a+x $Bdir/tmp.cmd.lst ; $Bdir/tmp.cmd.lst"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
 }else{
- $CMD = "submitSGEfarm $Bdir/tmp.cmd.lst -bt=-4 -rand -work=2"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
+ $CMD = "submitSGEfarm $Bdir/tmp.cmd.lst -bt=-4 -rand -work=2 > /dev/null"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
 }
 
 #---	read output, prepare ffr ---------------------------
@@ -231,7 +231,7 @@ foreach my $ff (keys %if2o){
 printf STDERR "$Pnam:\t\t%s\tqueries aligned\n",int_commify(scalar keys %f2fr) if($VERBOSE);
 close HANX;
 
-}			# ENDIF lazy
+}			# ENDIF lazy/diligent
 
 #---	fragments ------------------------------------------
 $CMD = "nemp $Bdir/tmp.ffr -r='^(\\S+):' | blastdbcmd -db  $Bdir/tmp.db -entry_batch - | fa2frag -f= $Bdir/tmp.ffr -w=0 | fa2sr -w=0 > $Bdir/tmp.sr"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
@@ -247,6 +247,7 @@ while(<HAND>){
  my $prof = $q2pr{$id};
  my $ss = $q2sc{$id};
  my $ev = $q2ev{$id};
+ next if($ev>$eval);			# secondary filter
  print "$id\t$fr\t$prof\t$sq";
  print "\t$ss\t$ev" if($stat);
  print "\n";

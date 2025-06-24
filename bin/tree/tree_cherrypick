@@ -14,8 +14,8 @@ use YIW::tree;
 # uncomment the next line if better randomness is important
 # use Math::Random::MT qw/rand srand/;
 
-our $Pver = "0.1";
-our $Pdat = "2024-09-27";
+our $Pver = "0.2";
+our $Pdat = "2025-03-15";
 
 our ($Pnam) = ($0 =~ m/([^\/]+)$/);
 our ($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
@@ -37,6 +37,7 @@ our $EXITCODE = 0;
 #	Definitions
 ############################################################
 my $nend = 3;
+my $finv = 0;
 my $flst = 0;
 
 ############################################################
@@ -59,6 +60,8 @@ Options:
 	-n=n		reduce to n leaves (default $nend)
 
 	-lst		list selected leaves (default output tree)
+
+	-inv		list discarded leaves to the end (default output tree)
 EOINPUT
 
 ############################################################
@@ -86,6 +89,11 @@ $Base = $myOptList{"BASE"} if($myOptList{"BASE"} ne "");		# hidden common option
 # $optx = "0" if($optx==0);					# to be passed in command line
 $nend = int $myOptList{"n"} if(int $myOptList{"n"}>=2);
 $flst = 1 if(exists $myOptList{"lst"});
+if(exists $myOptList{"inv"}){
+ $finv = 1;
+ $flst = 1;
+ $nend = 2;
+}
 
 my $ftre = shift @myGlobList;
 
@@ -136,7 +144,9 @@ if($flst==0){
 list_tree_nodes($root,\@lint,\@llea);
 for(my $i=0;$i<@llea;$i++){
  my $rnod = $llea[$i];
- print $$rnod{"n"}."\n";
+ print $$rnod{"n"};
+ printf "\t%e",$$rnod{"l"} if($finv);
+ print "\n";
 }
 
 #---	clean ----------------------------------------------
@@ -174,13 +184,15 @@ sub reduce_cherry
  my $len1 = $$des1{"l"};
  	#printf STDERR "\t%s\t%e\tpresent\n",$$des0{"n"},$len0;
  	#printf STDERR "\t%s\t%e\tpresent\n",$$des1{"n"},$len1;
- if($len0>$len1){
+ if($len0>=$len1){
   $$minc{"n"} = $$des0{"n"};
   $$minc{"l"} += $len0;
+  printf "%s\t%e\n",$$des1{"n"},$len1 if($finv);
  	#printf STDERR "\t\t%s\t%e\tremoved\n",$$des1{"n"},$len1;
  }else{
   $$minc{"n"} = $$des1{"n"};
   $$minc{"l"} += $len1;
+  printf "%s\t%e\n",$$des0{"n"},$len0 if($finv);
  	#printf STDERR "\t\t%s\t%e\tremoved\n",$$des0{"n"},$len0;
  }
  delete $$minc{"d"};

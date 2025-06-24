@@ -13,8 +13,8 @@ use YIW::basic;
 # uncomment the next line if better randomness is important
 # use Math::Random::MT qw/rand srand/;
 
-our $Pver = "1.8";
-our $Pdat = "2024-09-18";
+our $Pver = "1.9";
+our $Pdat = "2024-11-15";
 
 our ($Pnam) = ($0 =~ m/([^\/]+)$/);
 our ($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
@@ -50,6 +50,7 @@ my $q300 = "0";
 my $compopt = "";
 my $max_tar = 10000;
 my $min_max_tar = 5;
+my $psithread = 1;
 my $optidlist = "";
 my $idfile = "";
 my $gifile = "";
@@ -128,6 +129,8 @@ Options:
 	-nocomp		no composition-based statistics (default yes)
 
 	-maxb=n		max number of hits (default $max_tar)
+
+	-thread=n	run psiblast on n threads (default $psithread)
 
 	-id=xxx		ID fromat in PSI-BLAST (default $modeids)
 
@@ -223,6 +226,7 @@ $prun = $myOptList{"p"} + 0 if($myOptList{"p"}>0);
 $q300 = $myOptList{"q300"} + 0 if($myOptList{"q300"}>0);
 $compopt = "-nocomp" if(exists $myOptList{"nocomp"});
 $max_tar = int $myOptList{"maxb"} if(int $myOptList{"maxb"}>0);
+$psithread = int $myOptList{"thread"} if(int $myOptList{"thread"}>0);
 $idfile = $myOptList{"ilist"} if($myOptList{"ilist"} ne "");
 $gifile = $myOptList{"glist"} if($myOptList{"glist"} ne "");
 $dbla = $myOptList{"dbla"} if($myOptList{"dbla"} ne "");
@@ -344,7 +348,7 @@ my $nbla = 0;
 open HANX,">$Base.cmd.lst" or die "Can't write \"$Base.cmd.lst\"";
 foreach my $pnam (keys %plst){
  next if($modebla==0 and -e "$dbla/$pnam.$sbla");
- $CMD = "run_psiprofile $dbas -id=$modeids -a= $dcor/$pnam.$sali $fasta $xcons -athr=$athr -gcon=$gcon -nque= \"$pnam\" -mul=$dthr -e=$erun -q300=$q300 $compopt -maxb=$max_tar $optidlist | btab2path -w=$idwrd -e=$erun -q300=$q300 -othr=$othr -cthr=$cthr -lgap=$gmax -mind=$wbas $optraw | sort -nr > $dbla/$Base.$pnam.tmp ; mv $dbla/$Base.$pnam.tmp $dbla/$pnam.$sbla";
+ $CMD = "run_psiprofile $dbas -id=$modeids -a= $dcor/$pnam.$sali $fasta $xcons -athr=$athr -gcon=$gcon -nque= \"$pnam\" -mul=$dthr -e=$erun -q300=$q300 $compopt -maxb=$max_tar -thread=$psithread $optidlist | btab2path -w=$idwrd -e=$erun -q300=$q300 -othr=$othr -cthr=$cthr -lgap=$gmax -mind=$wbas $optraw | sort -nr > $dbla/$Base.$pnam.tmp ; mv $dbla/$Base.$pnam.tmp $dbla/$pnam.$sbla";
  printf HANX "%s\n",$CMD;
  $nbla++;
 }
@@ -361,7 +365,8 @@ if($modequi>0){
 #---	run commands on SGE --------------------------------
 if($nbla>=$sgemin){
  my $optm = ""; $optm = "-m=192 -f=128" if($modehuge);
- $CMD = "submitSGEfarm $Base.cmd.lst -bt=$batch $optm -rand -work=2 > /dev/null"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
+ my $optt = ""; $optt = "-nt=$psithread" if($psithread>1);
+ $CMD = "submitSGEfarm $Base.cmd.lst -bt=$batch $optm $optt -rand -work=2 > /dev/null"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
 }elsif($nbla>0){
  $CMD = "chmod a+x $Base.cmd.lst ; ./$Base.cmd.lst"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
 }

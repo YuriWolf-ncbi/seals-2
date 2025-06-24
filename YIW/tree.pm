@@ -560,18 +560,36 @@ sub tree_ultra
   tree_ultra($$rdes[$i]);				# continue forward
  }
 
- my $sumtl = 0;
- my $sumdr = 0;
- for(my $i=0;$i<@$rdes;$i++){			# scan descendants 2
+ my $sumtbl = 0;
+ my $sumdep = 0;
+ for(my $i=0;$i<@$rdes;$i++){			# scan descendants 2; collect TBL and depth
   my $rden = $$rdes[$i];
-  $sumtl += $$rden{"l"} + $$rden{"tbl"};
-  $sumdr += ($$rden{"l"} + $$rden{"tbl"})/($$rden{"l"} + $$rden{"deep"});
+  $sumtbl += $$rden{"l"} + $$rden{"tbl"};
+  $sumdep += $$rden{"l"} + $$rden{"deep"};
  }
+ 
+ return if($sumtbl==0);				# all zero subtrees, nothing to do
 
- for(my $i=0;$i<@$rdes;$i++){			# scan descendants 3
+ my $dnew = $sumdep/@$rdes;
+
+ my $sumtbx = 0;
+ for(my $i=0;$i<@$rdes;$i++){			# scan descendants 3; equalize depth
   my $rden = $$rdes[$i];
-  my $quot = $sumtl/$sumdr/($$rden{"l"} + $$rden{"deep"});
-  tree_rescale($rden,$quot);
+  my $dede = $$rden{"l"} + $$rden{"deep"};
+  if($dede<=0){						# zero subtree; everything goes to branch
+   $$rden{"l"} = $dnew; 
+  }else{						# nonzero subtree; rescale
+   my $quot = $dnew/$dede;
+   tree_rescale($rden,$quot);
+  }
+  $sumtbx += $$rden{"l"} + $$rden{"tbl"};
+ }
+ 
+ my $quox = $sumtbl/$sumtbx;
+
+ for(my $i=0;$i<@$rdes;$i++){			# scan descendants 4; equalize TBL
+  my $rden = $$rdes[$i];
+  tree_rescale($rden,$quox);
   $$rnod{"tbl"} += $$rden{"l"} + $$rden{"tbl"};
   $$rnod{"deep"} = $$rden{"l"} + $$rden{"deep"} if($i==0);
  }
@@ -671,6 +689,7 @@ sub tree_collect_wt
   my $rden = $$rdes[$i];				# i-th descendant
   $sumx += $$rnod{"l"}+$$rden{"l"}+$$rden{"tbl"};
  }
+ $sumx = 1 if($sumx<=0);
 
  for(my $i=0;$i<@$rdes;$i++){			# scan descendants
   my $rden = $$rdes[$i];				# i-th descendant

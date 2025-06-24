@@ -13,8 +13,8 @@ use YIW::basic;
 # uncomment the next line if better randomness is important
 # use Math::Random::MT qw/rand srand/;
 
-our $Pver = "0.8";
-our $Pdat = "March 03 2024";
+our $Pver = "0.9";
+our $Pdat = "2024-11-15";
 
 our ($Pnam) = ($0 =~ m/([^\/]+)$/);
 our ($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
@@ -58,6 +58,7 @@ my @outfml = qw/7 qseqid sseqid qlen slen qstart qend sstart send evalue bitscor
 my $outfmt = join " ",@outfml;
 my $modeids = "seqid";
 my $psilookup = 9;
+my $psithread = 1;
 my $max_tar = 10000;
 my $min_max_tar = 5;
 
@@ -103,6 +104,8 @@ Options:
 	-id=xxx		ID fromat in PSI-BLAST (default $modeids)
 
 	-maxb=n		max number of hits (default $max_tar)
+
+	-thread=n	run psiblast on n threads (default $psithread)
 
 	-glist=file	limit search to a list of GIs
 
@@ -154,6 +157,7 @@ $ethr = $myOptList{"e"} + 0 if($myOptList{"e"}>0);
 $q300 = $myOptList{"q300"} + 0 if($myOptList{"q300"}>0);
 $optcom = "0" if(exists $myOptList{"nocomp"});
 $max_tar = int $myOptList{"maxb"} if(int $myOptList{"maxb"}>0);
+$psithread = int $myOptList{"thread"} if(int $myOptList{"thread"}>0);
 $modeids = $myOptList{"id"} if($myOptList{"id"} ne "");
 $idfile = $myOptList{"ilist"} if($myOptList{"ilist"} ne "");
 $gifile = $myOptList{"glist"} if($myOptList{"glist"} ne "");
@@ -226,14 +230,14 @@ my $erun = $ethr*10;
 
 #---	run psiblast single --------------------------------
 {
-$CMD = "psiblast -db $dbas $longids -dbsize $dbsize $optidlist -query $Base.fa -evalue $erun -seg $optseg -comp_based_stats $optcom -max_target_seqs $nhit -outfmt \"$outfmt\" -out $Base.x.tab"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT);
+$CMD = "psiblast -db $dbas $longids -dbsize $dbsize $optidlist -query $Base.fa -evalue $erun -seg $optseg -comp_based_stats $optcom -max_target_seqs $nhit -num_threads $psithread -outfmt \"$outfmt\" -out $Base.x.tab"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT);
 $CMD = "perl -pe \"s/^\\w\\S*/$nque/\" $Base.x.tab"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT);
 unlink <$Base.*.tab> unless($DEBUG);
 }
 #---	run psiblast single profile ------------------------
 if($dthr>=0){
 $CMD = "sr2fa -b=80 $Base.sr > $Base.afa"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT);
-$CMD = "psiblast -db $dbas $longids -dbsize $dbsize $optidlist -in_msa $Base.afa -ignore_msa_master -threshold $psilookup -evalue $erun -seg $optseg -comp_based_stats $optcom -max_target_seqs $nhit -outfmt \"$outfmt\" -out $Base.0.tab"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT);
+$CMD = "psiblast -db $dbas $longids -dbsize $dbsize $optidlist -in_msa $Base.afa -ignore_msa_master -threshold $psilookup -evalue $erun -seg $optseg -comp_based_stats $optcom -max_target_seqs $nhit -num_threads $psithread -outfmt \"$outfmt\" -out $Base.0.tab"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT);
 $CMD = "perl -pe \"s/^\\w\\S*/$nque/\" $Base.0.tab"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT);
 unlink <$Base.*.tab> unless($DEBUG);
 }
@@ -260,7 +264,7 @@ while(<HAND>){
  $CMD = "fslice -b=1 -n=1 $Base.sr > $Base.$ii.sr"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT);
  $CMD = "tab_select $Base.sr -t= $Base.$ii.lst -s1='\\s+' >> $Base.$ii.sr"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT);
  $CMD = "sr2fa -b=80 $Base.$ii.sr > $Base.$ii.afa"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT);
- $CMD = "psiblast -db $dbas $longids -dbsize $dbsize $optidlist -in_msa $Base.$ii.afa -ignore_msa_master -threshold $psilookup -evalue $erun -seg $optseg -comp_based_stats $optcom -max_target_seqs $nhit -outfmt \"$outfmt\" -out $Base.$ii.tab"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT);
+ $CMD = "psiblast -db $dbas $longids -dbsize $dbsize $optidlist -in_msa $Base.$ii.afa -ignore_msa_master -threshold $psilookup -evalue $erun -seg $optseg -comp_based_stats $optcom -max_target_seqs $nhit -num_threads $psithread -outfmt \"$outfmt\" -out $Base.$ii.tab"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT);
  $CMD = "perl -pe \"s/^\\w\\S*/$nque/\" $Base.$ii.tab"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT);
  unlink <$Base.$ii.*> unless($DEBUG);
  $ii++;

@@ -14,7 +14,7 @@ use YIW::basic;
 # use Math::Random::MT qw/rand srand/;
 
 our $Pver = "0.2";
-our $Pdat = "August 26 2024";
+our $Pdat = "2024-11-08";
 
 our ($Pnam) = ($0 =~ m/([^\/]+)$/);
 our ($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
@@ -133,7 +133,7 @@ my $ffna = shift @myGlobList;
 # log_this_point($Pnam,"$Pnam\t$Ppid","started") if($VERBOSE>1);
 
 #---	translate and run ----------------------------------
-$CMD = "orf $ffna -c=6000 -f=0 -m=0 -n=3 -w=0 -u > $Base.faa ; map_mmprof_aa $Base.faa -d= $dpro -m= $dpmm $lazy $stat -sge= $sgemin -VERB= $VERBOSE > $Base.tab"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
+$CMD = "orf $ffna -c=6000 -f=0 -m=0 -n=3 -w=0 -u > $Base.faa ; map_mmprof_aa $Base.faa -d= $dpro -m= $dpmm -e= $eval $lazy $stat -sge= $sgemin -VERB= $VERBOSE > $Base.tab"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
 
 #---	read sequence lengths ------------------------------
 my %nt2l = ();
