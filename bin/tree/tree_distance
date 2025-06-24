@@ -25,7 +25,7 @@ $flagh = 0;
 $flaga = 0;
 $flap = 0;
 $tnam = "tmp.tre";
-$EPSILON = "0.000001";
+$EPSILON = "0.0";
 
 ############################################################
 #	Global variables

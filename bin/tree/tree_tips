@@ -8,13 +8,12 @@
 ############################################################
 #	System etc
 ############################################################
-#use lib "/home/wolf/perl5/lib/perl5";
-use lib $ENV{'PERL_LIB_PATH'};
+use lib $ENV{'PERL_LIB_YIW'};
 use YIW::basic;
 use YIW::tree;
 
-our $Pver = "0.6";
-our $Pdat = "May 24 2021";
+our $Pver = "0.7";
+our $Pdat = "March 10 2024";
 
 our ($Pnam) = ($0 =~ m/([^\/]+)$/);
 our ($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
@@ -29,9 +28,10 @@ $MAXVAL = 1e300;
 $dcut = 0;
 $hcut = 0.5;
 $hmax = $MAXVAL;
-$qlea = 10;
-$nmin=2;
+$wadd = -1;
+$nmin = 2;
 $name = "";
+$tree_hnam = "tree";
 $tabout = 0;
 ############################################################
 #	Global variables
@@ -62,11 +62,14 @@ Options:
 			1 - by subtree TBL
 			2 - unweighted
 
-	-q=x		inverse of leaf bonus for weighting (default $qlea)
+	-q=x		leaf bonus (height*x, default $wadd)
+			<0 - 1/n
 
 	-s		allow singletons
 
 	-tab		no brackets for header
+
+	-tp=x		tree name prefix (default $tree_hnam)
 
 	-n=x		output file name (default STDOUT)
 EOINPUT
@@ -88,9 +91,10 @@ $hcut = $myOptList{"h"} + 0 if($myOptList{"h"}>0);
 $dcut = $myOptList{"d"} + 0 if($myOptList{"d"}>0);
 $hmax = $myOptList{"m"} + 0 if($myOptList{"m"}>0);
 $wmod = int $myOptList{"w"} if(int $myOptList{"w"}>0);
-$qlea = $myOptList{"q"} + 0 if($myOptList{"q"}>0);
+$wadd = $myOptList{"q"} + 0 if(exists $myOptList{"q"});
 $nmin = 1 if(exists $myOptList{"s"});
 $tabout = 1 if(exists $myOptList{"tab"});
+$tree_hnam = $myOptList{"tp"} if($myOptList{"tp"} ne "");
 $name = $myOptList{"n"} if($myOptList{"n"} ne "");
 $DEBUG = 1 if(exists $myOptList{"DEBUG"});
 
@@ -113,15 +117,17 @@ print STDERR "$Pnam:\tReading $ftre\n";
 $root = read_newick($ftre);
 
 #---	process the tree -----------------------------------
+label_tree($root,0);						# sets "lab"
 tree_leaf_sets($root);						# sets "snod"
-tree_calc_height($root);					# sets "high"
+tree_height($root);						# sets "high"
 
 if($dcut>0){
  my $rset = $$root{"snod"};
- my $ttbl = tree_collect_tbl($root);
- my $wadd = $ttbl/(scalar keys %$rset)/$qlea;
+ my $nlea = scalar keys %$rset;
+ $wadd = 1/$nlea if($wadd<0);
  tree_collect_tbl($root,$wadd);					# sets "tbl"
  tree_calc_depth($root,$wmod);					# sets "deep"
+ #tree_smooth_depth($root,$wmod);				# adjusts "deep"
 }
 
 	print_tree($root,0) if $DEBUG;
@@ -214,12 +220,13 @@ sub cut_tips
  if((($hcut<$MAXVAL and $$rnod{"high"}>=$hcut) or ($dcut>0 and $$rnod{"deep"}<=$dcut)) and $$rnod{"high"}<=$hmax and $nlea>=$nmin){
   $$rnum++;
   my $fout = "-";
-  my $tout = sprintf "tree%05d",$$rnum;
+  my $tout = sprintf "%s%05d",$tree_hnam,$$rnum;
   if($tnam ne ""){
    $tout = sprintf "%s.%d",$tnam,$$rnum;
    $fout = sprintf "%s.%d.tre",$tnam,$$rnum;
   }
-  my $pref = sprintf "%d,%.3f,%.3f,%s",$nlea,$$rnod{"high"},$$rnod{"deep"},$tout;
+  my $nlab = sprintf "node%s",$$rnod{"lab"}; $nlab = sprintf "leaf%s",$$rnod{"lab"} if($nlea<2);
+  my $pref = sprintf "%d,%.3f,%.3f,%s,%s",$nlea,$$rnod{"high"},$$rnod{"deep"},$tout,$nlab;
   $pref = "[".$pref."]" if($tabout==0);
   my $ltre = write_tree_rec($rnod,2);
   open HANZ,">$fout" or die "Can't write \"$fout\"";
@@ -261,5 +268,29 @@ sub print_tree
  for(my $i=0;$i<$level;$i++){ print "\t";} printf "D= [%.4f]\n",$$rnod{"deep"};
 
  for(my $i=0;$i<@$rdes;$i++){ print_tree($$rdes[$i],$level+1);}
+}
+
+############################################################
+#	tree_smooth_depth($rnod)
+############################################################
+sub tree_smooth_depth
+{
+ my $rnod = shift;
+
+ my $rpar = $$rnod{"p"};
+ 
+ if($rpar ne ""){						# not root
+  if($$rnod{"deep"}>$$rpar{"deep"}){					# deeper than parent; adjust
+  	#printf "%.3f\t%.3f\tnode%s -> node%s\n",$$rpar{"deep"},$$rnod{"deep"},$$rpar{"lab"},$$rnod{"lab"};
+   $$rnod{"deep"} = $$rpar{"deep"};
+  }
+ }
+
+ my $rdes = $$rnod{"d"};			# descendants
+
+ for(my $i=0;$i<@$rdes;$i++){			# scan descendants
+  my $rden = $$rdes[$i];
+  tree_smooth_depth($rden);				# continue forward
+ }
 }
 

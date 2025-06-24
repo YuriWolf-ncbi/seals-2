@@ -10,11 +10,12 @@
 ############################################################
 use lib $ENV{'PERL_LIB_YIW'};
 use YIW::basic;
+use YIW::tree;
 # uncomment the next line if better randomness is important
 # use Math::Random::MT qw/rand srand/;
 
-our $Pver = "0.2";
-our $Pdat = "2024-11-08";
+our $Pver = "0.1";
+our $Pdat = "2024-09-27";
 
 our ($Pnam) = ($0 =~ m/([^\/]+)$/);
 our ($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
@@ -35,12 +36,7 @@ our $EXITCODE = 0;
 ############################################################
 #	Definitions
 ############################################################
-my $dpro = "";
-my $dpmm = "";
-my $eval = 100;
-my $sgemin = 0x7fffffff;
-my $lazy = "";
-my $stat = "";
+my $nset = 3;
 
 ############################################################
 #	Global variables
@@ -53,29 +49,15 @@ $Instructions = <<EOINPUT;
 
 $Path/$Pnam $Pver, $Pdat
 
-Use: $Pnam query.fna -d=profiledir -m=profiledb [options]
+Use: $Pnam treefile [options]
+
+Reads tree; selects $nset leaves by greedy Max Min Distance algorithm
+(https://doi.org/10.1080/10635150802552831)
+NB: N^2 distances stored!
 
 Options:
 
-Finds footprints of the best profile in the DB on nucleotide sequences.
-
-Profile directory contains aligned <name>.FASTA files with consensus sequences on top.
-
-Profile DB is made from the same alignments.
-
-Options:
-
-	-d=profiledir	profile directory (MANDATORY!)
-
-	-m=profiledb	mmseqs profile DB (MANDATORY!)
-
-	-e=evalue	mmseqs search evalue limit (default $eval)
-
-	-lazy		use mmseqs result (default run hhalign)
-	
-	-stat		add search stats (score and evalue)
-
-	-sge=n		run on SGE if the number of jobs>=n (default $sgemin)
+	-n=n		reduce to n leaves (default $nset)
 EOINPUT
 
 ############################################################
@@ -83,7 +65,7 @@ EOINPUT
 ############################################################
 
 #---	get and process arguments --------------------------
-YIW::basic::my_args(\@ARGV,0);					# pass 0 to block STDIN
+YIW::basic::my_args(\@ARGV,1);					# pass 0 to block STDIN
 !@myGlobList and print $Instructions and exit 0;
 
 if(exists $myOptList{"DEBUG"}){ 					# hidden common option
@@ -101,17 +83,9 @@ $Base = $myOptList{"BASE"} if($myOptList{"BASE"} ne "");		# hidden common option
 # $optr = $myOptList{"x"} + 0 if($myOptList{"x"}>0);		# positive real
 # $optl = $myOptList{"l"} if($myOptList{"l"} ne "");		# non-empty string
 # $optx = "0" if($optx==0);					# to be passed in command line
-$dpro = $myOptList{"dir"} if($myOptList{"dir"} ne "");			# hidden alternative
-$dpro = $myOptList{"d"} if($myOptList{"d"} ne "");
-$dpmm = $myOptList{"db"} if($myOptList{"db"} ne "");			# hidden alternative
-$dpmm = $myOptList{"m"} if($myOptList{"m"} ne "");
-$eval = $myOptList{"e"} + 0 if($myOptList{"e"}>0);
-$lazy = "-lazy" if(exists $myOptList{"lazy"});
-$stat = "-stat" if(exists $myOptList{"stat"});
-$sgemin = int $myOptList{"sge"} if(int $myOptList{"sge"}>0);
-$VERBOSE = "0" if($VERBOSE==0);
+$nset = int $myOptList{"n"} if(int $myOptList{"n"}>=2);
 
-my $ffna = shift @myGlobList;
+my $ftre = shift @myGlobList;
 
 #---	rest of the code -----------------------------------
 # $CMD = ""; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
@@ -132,75 +106,117 @@ my $ffna = shift @myGlobList;
 #
 # log_this_point($Pnam,"$Pnam\t$Ppid","started") if($VERBOSE>1);
 
-#---	translate and run ----------------------------------
-$CMD = "orf $ffna -c=6000 -f=0 -m=0 -n=3 -w=0 -u > $Base.faa ; map_mmprof_aa $Base.faa -d= $dpro -m= $dpmm -e= $eval $lazy $stat -sge= $sgemin -VERB= $VERBOSE > $Base.tab"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
+#---	read tree ------------------------------------------
+print STDERR "$Pnam:\tReading $ftre\n";
+$root = read_newick($ftre);
 
-#---	read sequence lengths ------------------------------
-my %nt2l = ();
-my $def = ""; my $seq = "";
-print STDERR "$Pnam:\tReading $ffna\n" if($VERBOSE);
-open HAND,"<$ffna" or die "$Pnam:\tCan't read \"$ffna\"";
-while(<HAND>){
- chomp;
- if(m/^>/){
-  my $ddd = substr $_,1;
-  process_sequence(\$seq,\$def) if($seq ne "" and $def ne "");
-  $def = $ddd; $seq = "";
-  next;
+#---	distances ------------------------------------------
+comp_node_dist($root);
+my $rlst = $$root{"dis"};
+my $nlea = scalar keys %$rlst;
+printf STDERR "$Pnam:\t\t%s\tleaves\n",int_commify($nlea) if($VERBOSE);
+
+my %ldis = ();
+comp_pair_dist($root,\%ldis);
+printf STDERR "$Pnam:\t\t%s\tdistances\n",int_commify(scalar keys %ldis) if($VERBOSE);
+
+#---	MMD set init ---------------------------------------
+my $dmax = -1; my $pmax = "";
+foreach my $pp (sort keys %ldis){
+ if($ldis{$pp}>$dmax){ $dmax = $ldis{$nx}; $pmax = $pp;}
+}
+my ($l1,$l2) = split/\t/,$pmax;
+my %lmmd = ($l1=>1,$l2=>1);
+
+my $nmmd = 2;
+
+#---	MMD set add ----------------------------------------
+while($nmmd<$nset and $nmmd<$nlea){
+ my $maxd = -1; my $lmax = "";
+ foreach my $ll (keys %$rlst){
+  next if($lmmd{$ll});
+  my $dmin = 1e300;
+  foreach my $lx (keys %lmmd){
+   my $dd = $ldis{$ll."\t".$lx};
+   if($dd<$dmin){ $dmin = $dd;}
+  }
+  if($dmin>$maxd){ $maxd = $dmin; $lmax = $ll;}
  }
- $seq .= $_;
+ $lmmd{$lmax} = 1;
+ $nmmd++;
+ 	#printf "%.4f\t%s\t%d\n",$maxd,$lmax,$nmmd;
 }
-close HAND;
-process_sequence(\$seq,\$def) if($seq ne "" and $def ne "");
-printf STDERR "$Pnam:\t\t%s\tsequences\n",int_commify(scalar keys %nt2l) if($VERBOSE);
 
-#---	read hits ------------------------------------------
-print STDERR "$Pnam:\tReading $Base.tab\n" if($VERBOSE);
-open HAND,"<$Base.tab" or die "$Pnam:\tCan't read \"$Base.tab\"";
-while(<HAND>){
- chomp;
- my ($idaa,$frag,@data) = split/\t/;
- my ($p1,$p2) = ($frag =~ m/^(\d+).+\b(\d+)$/);
- my ($idnt,$fram) = ($idaa =~ m/^(.+)_fr(\d+)$/);
- my $x1 = coord_map($p1,0,$fram,$nt2l{$idnt});
- my $x2 = coord_map($p2,1,$fram,$nt2l{$idnt});
- printf "%s\t%d-%d\t%s\n",$idnt,$x1,$x2,(join "\t",@data);
+#---	output ---------------------------------------------
+foreach my $lx (sort keys %lmmd){
+ print $lx."\n";
 }
-close HAND;
 
 #---	clean ----------------------------------------------
-unlink <$Base.*> unless($DEBUG);
+# unlink <$Base.*> unless($DEBUG);
 
 ############################################################
-#	process_sequence($rseq,$rdef)
+#	comp_node_dist($rnod)
 ############################################################
-sub process_sequence
+sub comp_node_dist
 {
- my $rseq = shift;
- my $rdef = shift;
+ my $rnod = shift;
 
- $$rseq =~ tr/ \t//d;
+ my %n2d = ();
+ $$rnod{"dis"} = \%n2d;				# current level storage
 
- my ($id) = split/\s+/,$$rdef;
- $id = (split/$delim/,$id)[$idwrd-1] if($idwrd>0);
+ my $rdes = $$rnod{"d"};
+
+ unless(@$rdes){				# terminal node - store self
+  my $name = $$rnod{"n"};
+  $n2d{$name} = 0;
+  return;
+ }
  
- $nt2l{$id} = length($$rseq);
+ for(my $i=0;$i<@$rdes;$i++){			# scan descendants
+  next if($$rdes[$i] eq "");				# no empty stuff (?)
+  comp_node_dist($$rdes[$i]);				# calculate forward
+  my $high = $$rdes[$i]{"l"};				# add length	
+  my $rlst = $$rdes[$i]{"dis"};				# descendants of descendants
+  foreach my $name (keys %$rlst){			# add to list
+   $n2d{$name} = $high + $$rlst{$name};
+  }
+ }
 }
 
 ############################################################
-#	coord_map($apos,$iend,$afra,$nlen)
+#	comp_pair_dist($rnod,$rdis)
 ############################################################
-sub coord_map
+sub comp_pair_dist
 {
- my $apos = shift;
- my $iend = shift;
- my $afra = shift;
- my $nlen = shift;
+ my $rnod = shift;
+ my $rdis = shift;
 
- $afra = 3 - $afra if($afra>3);
+ my $rdes = $$rnod{"d"};
+ my $rlst = $$rnod{"dis"};
+
+ unless(@$rdes){				# terminal node - nothing to do
+  return;
+ }
  
- my $eoff = 2 if($iend>0);
+ my $ndes = @$rdes;				# no. of descendent nodes
  
- return $nlen - ($apos-1)*3 + $afra + 1 - $eoff if($afra<0);
- return ($apos-1)*3 + $afra + $eoff;
+ for(my $i=0;$i<$ndes;$i++){			# scan descendants
+  comp_pair_dist($$rdes[$i],$rdis);
+ }
+ 
+ for(my $i=0;$i<$ndes-1;$i++){			# scan descendants
+  my $rlsi = $$rdes[$i]{"dis"};				# descendants of descendants
+  for(my $j=$i+1;$j<$ndes;$j++){
+   my $rlsj = $$rdes[$j]{"dis"};			# descendants of descendants
+   foreach my $nami (sort keys %$rlsi){
+    my $leni = $$rlst{$nami};
+    foreach my $namj (sort keys %$rlsj){
+     my $lenj = $$rlst{$namj};
+     $$rdis{$nami."\t".$namj} = $leni+$lenj;
+     $$rdis{$namj."\t".$nami} = $leni+$lenj;
+    }
+   }
+  }
+ }
 }

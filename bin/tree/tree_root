@@ -8,15 +8,14 @@
 ############################################################
 #	System etc
 ############################################################
-#use lib "/home/wolf/perl5/lib/perl5";
-use lib $ENV{'PERL_LIB_PATH'};
+use lib $ENV{'PERL_LIB_YIW'};
 use YIW::basic;
 use YIW::tree;
 # uncomment the next line if better randomness is important
 # use Math::Random::MT qw/rand srand/;
 
-our $Pver = "0.4";
-our $Pdat = "November 12 2021";
+our $Pver = "0.6";
+our $Pdat = "2025-04-11";
 
 our ($Pnam) = ($0 =~ m/([^\/]+)$/);
 our ($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
@@ -127,7 +126,7 @@ my $ftre = shift @myGlobList;
 
 #---	read tree ------------------------------------------
 print STDERR "$Pnam:\tReading $ftre\n" if($VERBOSE);
-my $root = read_newick($ftre,$EPSILON);
+my $root = read_newick($ftre,0);
 label_tree($root,0);		# Phylip-style labels
 
 #---	list nodes -----------------------------------------
@@ -140,6 +139,14 @@ printf STDERR "$Pnam:\t\t%s\tleaves\n",int_commify(scalar @llea) if($VERBOSE);
 if(@llea<3){
  write_newick($root,"-",$wmod,"");
  exit;
+}
+
+#---	inflate edges --------------------------------------
+foreach my $rnod (@lnod,@llea){
+ next if($$rnod{"p"} eq "");			# do not touch the root
+ next if($$rnod{"l"}>=$EPSILON);		# long enough
+ $$rnod{"l"} = $EPSILON*(0.5+rand()/2);		# inflate
+ $$rnod{"inflated"} = 1;			# mark
 }
 
 #---	check if rooted ------------------------------------
@@ -247,6 +254,11 @@ foreach my $rbra (@lbra){
  $$rbra{"difn"} = (abs($$rbra{"xn"}-$$rbra{"yn"}))/($$rbra{"xn"}+$$rbra{"yn"});
 }
 
+#---	deflate branches -----------------------------------
+foreach my $rbra (@lbra){
+ $$rbra{"l"} = 0 if($$rbra{"l"}<$EPSILON);				# deflate
+}
+
 @lbra = sort { sort_branch($a,$b)} @lbra;
 
 	#foreach my $rbra (@lbra){
@@ -280,8 +292,8 @@ foreach my $rbra (@lbra){
  my $hdif = $$rbra{"xh"} - $$rbra{"yh"};
  my $lx = ($$rbra{"l"}-$hdif)/2;
  my $ly = ($$rbra{"l"}+$hdif)/2;
- if($lx<0){ $lx = $EPSILON; $ly = $$rbra{"l"} - $EPSILON;}
- if($ly<0){ $ly = $EPSILON; $lx = $$rbra{"l"} - $EPSILON;}
+ if($lx<0){ $lx = $EPSILON; $ly = $$rbra{"l"};}
+ if($ly<0){ $ly = $EPSILON; $lx = $$rbra{"l"};}
  printf "(%s:%.5f,%s:%.5f);\n",$linx,$lx,$liny,$ly;
  last if($rmod==0 or $rmod==3);
  $done = 1;

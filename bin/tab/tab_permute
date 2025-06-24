@@ -8,6 +8,10 @@
 ############################################################
 #	System etc
 ############################################################
+use lib $ENV{'PERL_LIB_YIW'};
+use YIW::basic;
+use YIW::stat;
+
 $Pver = "0.1";
 $Pdat = "November 15 2014";
 
@@ -72,7 +76,7 @@ foreach my $fnam (@myGlobList){
  open HAND,"<$fnam" or die "Can't read \"$fnam\"";
  while(<HAND>){
   chomp;
-  if(m/^\#/){ next if($icom>0);}
+  if(m/^\#/){ next unless($icom>0);}
   push @tabl,$_;
   my @data = split/$ldelim/;
   push @tkey,$data[$kp-1];
@@ -90,47 +94,6 @@ for(my $i=0;$i<@tabl;$i++){
  $data[$kp-1] = $tkey[$i];
  printf "%s\n",(join $jdelim,@data);
 }
-
-############################################################
-#	permute_array($rarr)
-############################################################
-# "proper" permutation accorting to Knuth
-sub permute_array
-{
- my $rarr = shift;
- my $ndat = @$rarr;
- 
- for(my $i=0;$i<$ndat;$i++){
-  my $r = $i + rand($ndat-$i);
-  my $tmp = $$rarr[$i];
-  $$rarr[$i] = $$rarr[$r];
-  $$rarr[$r] = $tmp;
- }
-}
-
-############################################################
-#	max min
-############################################################
-sub max
-{
- my $max = shift;
- while(@_){
-  my $x = shift;
-  $max = $x if($x>$max);
- }
- return $max;
-}
-
-sub min
-{
- my $min = shift;
- while(@_){
-  my $x = shift;
-  $min = $x if($x<$min);
- }
- return $min;
-}
-
 
 ############################################################
 #	my_args

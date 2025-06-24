@@ -98,7 +98,7 @@ sub read_newick
 
 ############################################################
 #	process_newick($rnod,$line,$EPSILON)
-#	February 19 2020
+#	2024-09-17
 ############################################################
 sub process_newick
 {
@@ -106,7 +106,7 @@ sub process_newick
  my $line = shift;
  my $EPSILON = shift;
 
- my ($head) = ($line=~m/^(\[.+\])/);	# get header
+ my ($head) = ($line=~m/^\[(.+)\]/);	# get header
  $$rnod{"head"} = $head if($head ne "");
  
  $line =~ s/^\[.+\]\s*//;		# clean header
@@ -560,18 +560,36 @@ sub tree_ultra
   tree_ultra($$rdes[$i]);				# continue forward
  }
 
- my $sumtl = 0;
- my $sumdr = 0;
- for(my $i=0;$i<@$rdes;$i++){			# scan descendants 2
+ my $sumtbl = 0;
+ my $sumdep = 0;
+ for(my $i=0;$i<@$rdes;$i++){			# scan descendants 2; collect TBL and depth
   my $rden = $$rdes[$i];
-  $sumtl += $$rden{"l"} + $$rden{"tbl"};
-  $sumdr += ($$rden{"l"} + $$rden{"tbl"})/($$rden{"l"} + $$rden{"deep"});
+  $sumtbl += $$rden{"l"} + $$rden{"tbl"};
+  $sumdep += $$rden{"l"} + $$rden{"deep"};
  }
+ 
+ return if($sumtbl==0);				# all zero subtrees, nothing to do
 
- for(my $i=0;$i<@$rdes;$i++){			# scan descendants 3
+ my $dnew = $sumdep/@$rdes;
+
+ my $sumtbx = 0;
+ for(my $i=0;$i<@$rdes;$i++){			# scan descendants 3; equalize depth
   my $rden = $$rdes[$i];
-  my $quot = $sumtl/$sumdr/($$rden{"l"} + $$rden{"deep"});
-  tree_rescale($rden,$quot);
+  my $dede = $$rden{"l"} + $$rden{"deep"};
+  if($dede<=0){						# zero subtree; everything goes to branch
+   $$rden{"l"} = $dnew; 
+  }else{						# nonzero subtree; rescale
+   my $quot = $dnew/$dede;
+   tree_rescale($rden,$quot);
+  }
+  $sumtbx += $$rden{"l"} + $$rden{"tbl"};
+ }
+ 
+ my $quox = $sumtbl/$sumtbx;
+
+ for(my $i=0;$i<@$rdes;$i++){			# scan descendants 4; equalize TBL
+  my $rden = $$rdes[$i];
+  tree_rescale($rden,$quox);
   $$rnod{"tbl"} += $$rden{"l"} + $$rden{"tbl"};
   $$rnod{"deep"} = $$rden{"l"} + $$rden{"deep"} if($i==0);
  }
@@ -632,16 +650,17 @@ sub tree_weight
  
  tree_height($rnod);
  
- my $tble = tree_collect_tbl($rnod,$wadd);
+ tree_collect_tbl($rnod,$wadd);			# with leaf bonuses
  
  my $wxxx = $wsum;
  $wxxx = 100 if($wsum<=0);
 
  tree_collect_wt($rnod,$wxxx);
  
+ my $tble = tree_collect_tbl($rnod,0);		# clean
  my $hsum = 0; tree_collect_sumheight($rnod,\$hsum);
  my $have = 0; $have = $hsum/$wxxx;
- my $neff = 1; $neff = $$rnod{"tbl"}/$have if($$rnod{"tbl"}>0 and $have>0);
+ my $neff = 1; $neff = $tble/$have if($tble>0 and $have>0);
   
  $$rnod{"avhi"} = $have;
  $$rnod{"neff"} = $neff;
@@ -670,6 +689,7 @@ sub tree_collect_wt
   my $rden = $$rdes[$i];				# i-th descendant
   $sumx += $$rnod{"l"}+$$rden{"l"}+$$rden{"tbl"};
  }
+ $sumx = 1 if($sumx<=0);
 
  for(my $i=0;$i<@$rdes;$i++){			# scan descendants
   my $rden = $$rdes[$i];				# i-th descendant

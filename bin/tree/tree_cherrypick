@@ -10,11 +10,12 @@
 ############################################################
 use lib $ENV{'PERL_LIB_YIW'};
 use YIW::basic;
+use YIW::tree;
 # uncomment the next line if better randomness is important
 # use Math::Random::MT qw/rand srand/;
 
-our $Pver = "0.3";
-our $Pdat = "August 09 2024";
+our $Pver = "0.2";
+our $Pdat = "2025-03-15";
 
 our ($Pnam) = ($0 =~ m/([^\/]+)$/);
 our ($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
@@ -35,13 +36,9 @@ our $EXITCODE = 0;
 ############################################################
 #	Definitions
 ############################################################
-my $mmdb = "";
-my $fasta = 0;
-my $idwrd = 0;
-my $delim = "[ ,;:|]";
-my $sens = 6;
-my $thre = "";
-my $maxb = 100;
+my $nend = 3;
+my $finv = 0;
+my $flst = 0;
 
 ############################################################
 #	Global variables
@@ -54,23 +51,17 @@ $Instructions = <<EOINPUT;
 
 $Path/$Pnam $Pver, $Pdat
 
-Use: $Pnam querydb [options]
+Use: $Pnam treefile [options]
 
-Returns an equivalent of BLAST "qseqid sseqid qlen slen qstart qend sstart send evalue bitscore similarity"
+Reads a rooted binary tree; reduces to $nend leaves by collapsing shortest cherries.
 
 Options:
 
-	-d=targetdb	MMSEQS2 db (MANDATORY!)
+	-n=n		reduce to n leaves (default $nend)
 
-	-s=x		sensitivity (default $sens; 1<s<7.5)
+	-lst		list selected leaves (default output tree)
 
-	-fasta		FASTA query (make temporary DB)
-
-	-w=n		use n-th word of if FASTA ID (default all)
-
-	-nt=n		allow n threads (default all)
-
-	-maxb=n		maximum n hits per query (default $maxb)
+	-inv		list discarded leaves to the end (default output tree)
 EOINPUT
 
 ############################################################
@@ -96,15 +87,15 @@ $Base = $myOptList{"BASE"} if($myOptList{"BASE"} ne "");		# hidden common option
 # $optr = $myOptList{"x"} + 0 if($myOptList{"x"}>0);		# positive real
 # $optl = $myOptList{"l"} if($myOptList{"l"} ne "");		# non-empty string
 # $optx = "0" if($optx==0);					# to be passed in command line
-$fasta = 1 if(exists $myOptList{"fasta"});
-$mmdb = $myOptList{"db"} if($myOptList{"db"} ne "");			# hidden alternative
-$mmdb = $myOptList{"d"} if($myOptList{"d"} ne "");
-$sens = $myOptList{"s"} + 0 if($myOptList{"s"}>0);
-$idwrd = int $myOptList{"w"} if(exists $myOptList{"w"});
-$thre = "--threads ".(int $myOptList{"nt"}) if(int $myOptList{"nt"}>0);
-$maxb = int $myOptList{"maxb"} if(int $myOptList{"maxb"}>0);
+$nend = int $myOptList{"n"} if(int $myOptList{"n"}>=2);
+$flst = 1 if(exists $myOptList{"lst"});
+if(exists $myOptList{"inv"}){
+ $finv = 1;
+ $flst = 1;
+ $nend = 2;
+}
 
-my $dque = shift @myGlobList;
+my $ftre = shift @myGlobList;
 
 #---	rest of the code -----------------------------------
 # $CMD = ""; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
@@ -125,58 +116,105 @@ my $dque = shift @myGlobList;
 #
 # log_this_point($Pnam,"$Pnam\t$Ppid","started") if($VERBOSE>1);
 
-#---	prep -----------------------------------------------
-my $Bdir = YIW::basic::tempdir_make_safe("rmms");
+#---	read tree ------------------------------------------
+print STDERR "$Pnam:\tReading $ftre\n";
+$root = read_newick($ftre);
 
-my %gi2id = ();
-if($fasta){
-#---	extract sequences ----------------------------------
- $CMD = "fake_gi $dque -b=1 -p=\"yseq_id_\" > $Bdir/tmp.fa"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
+#---	list nodes -----------------------------------------
+my @lint = ();
+my @llea = ();
+list_tree_nodes($root,\@lint,\@llea);
+my $ncur = @llea;
+printf STDERR "$Pnam:\t\t%s\tleaves\n",int_commify($ncur);
 
-#---	read IDs -------------------------------------------
- open HAND,"<$Bdir/tmp.fa" or die "$Pnam:\tCan't read \"$Bdir/tmp.fa\"";
- while(<HAND>){
-  chomp;
-  my ($gi,$id) = m/>(\S+)\s+(\S+)/;
-  next if($id eq "");
-  $id = (split/$delim/,$id)[$idwrd-1] if($idwrd>0);
-  $gi2id{$gi} = $id;
- }
- close HAND;
-
-#---	database -------------------------------------------
- $CMD = "mmseqs createdb $Bdir/tmp.fa $Bdir/tmp.db > /dev/null"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
-
- $dque = "$Bdir/tmp.db"; 
+#---	reduce set -----------------------------------------
+while($ncur>$nend){
+ reduce_cherry($root);
+ $ncur--;
 }
 
-#---	search ---------------------------------------------
-$CMD = "mmseqs search $dque $mmdb $Bdir/tmp.search $Bdir -s $sens --max-seqs $maxb $thre > /dev/null"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
-
-#---	convert --------------------------------------------
-$CMD = "mmseqs createtsv $dque $mmdb $Bdir/tmp.search $Bdir/tmp.tab > /dev/null"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
-
-#---	recode ---------------------------------------------
-open HAND,"<$Bdir/tmp.tab" or die "$Pnam:\tCan't read \"$Bdir/tmp.tab\"";
-while(<HAND>){
- chomp;
- my ($qgi,$sid,$sco,$sim,$eva,$qq1,$qq2,$qle,$ss1,$ss2,$sle) = split /\t/;
- next if($qgi eq "");
- $qid = $gi2id{$qgi}; $qid = $qgi if($qid eq "");
- printf "%s\n",(join "\t",$qid,$sid,$qle,$sle,$qq1,$qq2,$ss1,$ss2,$eva,$sco,$sim);
+#---	output ---------------------------------------------
+if($flst==0){
+ write_newick($root,"-",2,$$root{"head"});
+ exit;
 }
-close HAND;
+
+@lint = ();
+@llea = ();
+list_tree_nodes($root,\@lint,\@llea);
+for(my $i=0;$i<@llea;$i++){
+ my $rnod = $llea[$i];
+ print $$rnod{"n"};
+ printf "\t%e",$$rnod{"l"} if($finv);
+ print "\n";
+}
 
 #---	clean ----------------------------------------------
-unless($DEBUG){
- $CMD = "rm -r $Bdir/"; print STDERR "$Pnam:\t[ $CMD ]\n" if($VERBOSE); $EXITCODE = system $CMD if($DOIT); die "$Pnam:\t[ $CMD ] failed with [ $EXITCODE ]" if($EXITCODE!=0);
-}
 # unlink <$Base.*> unless($DEBUG);
 
 ############################################################
-#	template_function($xxxx)
+#	reduce_cherry($root)
 ############################################################
-#sub template_function
-#{
-# my $xxxx = shift;
-#}
+sub reduce_cherry
+{
+ my $root = shift;
+
+ my @lche = ();
+
+ find_cherries($root,\@lche);
+
+ 	#printf STDERR "%d\tcherries\n",(scalar @lche);
+
+ my $mind = 1e300; my $minc = "";
+ for(my $i=0;$i<@lche;$i++){
+  my $rnod = $lche[$i];
+  my $rdes = $$rnod{"d"};
+  my $des0 = $$rdes[0];
+  my $des1 = $$rdes[1];
+  my $cdis = $$des0{"l"} + $$des1{"l"};
+  if($cdis<$mind){ $mind = $cdis; $minc = $rnod;}
+ }
+
+ 	#printf STDERR "%x\t%e\tchosen\n",$minc,$mind;
+	
+ my $rdes = $$minc{"d"};
+ my $des0 = $$rdes[0];
+ my $len0 = $$des0{"l"};
+ my $des1 = $$rdes[1];
+ my $len1 = $$des1{"l"};
+ 	#printf STDERR "\t%s\t%e\tpresent\n",$$des0{"n"},$len0;
+ 	#printf STDERR "\t%s\t%e\tpresent\n",$$des1{"n"},$len1;
+ if($len0>=$len1){
+  $$minc{"n"} = $$des0{"n"};
+  $$minc{"l"} += $len0;
+  printf "%s\t%e\n",$$des1{"n"},$len1 if($finv);
+ 	#printf STDERR "\t\t%s\t%e\tremoved\n",$$des1{"n"},$len1;
+ }else{
+  $$minc{"n"} = $$des1{"n"};
+  $$minc{"l"} += $len1;
+  printf "%s\t%e\n",$$des0{"n"},$len0 if($finv);
+ 	#printf STDERR "\t\t%s\t%e\tremoved\n",$$des0{"n"},$len0;
+ }
+ delete $$minc{"d"};
+}
+
+############################################################
+#	find_cherries($rnod,$rlst)
+############################################################
+sub find_cherries
+{
+ my $rnod = shift;
+ my $rlst = shift;
+
+ my $nlea = 0;
+ 
+ my $rdes = $$rnod{"d"};
+
+ for(my $i=0;$i<@$rdes;$i++){
+  $ndes = $$rdes[$i];
+  $rden = $$ndes{"d"};
+  $nlea++ if(@$rden==0);
+  find_cherries($ndes,$rlst);
+ }
+ push @$rlst,$rnod if($nlea==2 and @$rdes==2);
+}

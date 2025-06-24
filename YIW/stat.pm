@@ -15,7 +15,7 @@ BEGIN {
 # Functions and variables which are exported by default
 	our @EXPORT = qw(permute_array array2quant corr_pearson array2rank array2var array2entropy array2simpson find_index density_norm_s density_norm cdf_norm_s z_norm_s kernel_smooth_xy window_smooth_xy rand_normal rand_exp rand_poisson);
 # Functions and variables which can be optionally exported
-	our @EXPORT_OK = qw(array2wqprep array2wquant array2smoothmax distr_bhattacharyya_coeff distr_bhattacharyya_distance distr_hellinger_distance distr_earthmover_distance contingency_f1 contingency_p4 data2auc);
+	our @EXPORT_OK = qw(array2wqprep array2wquant array2smoothmax distr_bhattacharyya_coeff distr_bhattacharyya_distance distr_hellinger_distance distr_earthmover_distance contingency_f1 contingency_p4 data2auc match_norm_miq match_norm_qq);
 }
 
 ############################################################
@@ -46,6 +46,8 @@ BEGIN {
 #	YIW::stat::contingency_f1($xpp,$xpn,$xnp,$xnn,$beta)
 #	YIW::stat::contingency_p4($xpp,$xpn,$xnp,$xnn)
 #	YIW::stat::data2auc($rar1,$rar2)
+#	YIW::stat::match_norm_miq($rarr)
+#	YIW::stat::match_norm_qq($rarr,$qlo,$qhi)
 ############################################################
 
 my $Pi =  3.141592653589793;
@@ -878,4 +880,50 @@ sub prob_array_diff
  }
  
  return $pp/($s1*$s2);
+}
+
+############################################################
+#	YIW::stat::match_norm_miq($rarr)
+############################################################
+# for a numerical array matches normal distribution using
+# median and interquartile distance
+# returns ($av,sd)
+sub match_norm_miq
+{
+ my $rarr = shift;
+
+ my $ndat = @$rarr;
+ my @ltmp = sort {$a<=>$b} @$rarr;
+
+ my $q25 = array2quant(\@ltmp,$ndat,0.25);
+ my $q50 = array2quant(\@ltmp,$ndat,0.50);
+ my $q75 = array2quant(\@ltmp,$ndat,0.75);
+ my $siq = ($q75-$q25)/(z_norm_s(0.75)-z_norm_s(0.25));
+ return ($q50,$siq);
+}
+
+############################################################
+#	YIW::stat::match_norm_qq($rarr,$plo,$phi)
+############################################################
+# for a numerical array matches normal distribution using
+# 0<plo<0.5 and 0.5<phi<1
+# returns ($av,sd)
+sub match_norm_qq
+{
+ my $rarr = shift;
+ my $plo = shift;
+ my $phi = shift;
+
+
+ return (0,0) if($plo>=0.5 or $plo<=0 or $phi<=0.5 or $phi>=1);
+ my $ndat = @$rarr;
+ my @ltmp = sort {$a<=>$b} @$rarr;
+
+ my $qlo = array2quant(\@ltmp,$ndat,$plo);
+ my $qhi = array2quant(\@ltmp,$ndat,$phi);
+ my $zlo = z_norm_s($plo);
+ my $zhi = z_norm_s($phi);
+ my $av = ($qlo*$zhi-$qhi*$zlo)/($zhi-$zlo);
+ my $sd = ($qlo-$av)/($zlo);
+ return ($av,$sd);
 }

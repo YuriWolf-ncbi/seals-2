@@ -8,13 +8,12 @@
 ############################################################
 #	System etc
 ############################################################
-#use lib "/home/wolf/perl5/lib/perl5";
-use lib $ENV{'PERL_LIB_PATH'};
+use lib $ENV{'PERL_LIB_YIW'};
 use YIW::basic;
 use YIW::tree;
 
-our $Pver = "0.1";
-our $Pdat = "January 11 2016";
+our $Pver = "0.3";
+our $Pdat = "25-04-01";
 
 our ($Pnam) = ($0 =~ m/([^\/]+)$/);
 our ($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
@@ -77,9 +76,10 @@ my $ftre = shift @myGlobList;
 
 #---	read and prepare the tree --------------------------
 print STDERR "$Pnam:\tReading $ftre\n";
-$root = read_newick($ftre,1e-9);
+$root = read_newick($ftre,0);
 
 tree_ultra($root);
+
 if($seth>0 and $$root{"deep"}>0){
  my $quot = $seth/$$root{"deep"};
  tree_rescale($root,$quot);

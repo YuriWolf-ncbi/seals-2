@@ -8,8 +8,7 @@
 ############################################################
 #	System etc
 ############################################################
-#use lib "/home/wolf/perl5/lib/perl5";
-use lib $ENV{'PERL_LIB_PATH'};
+use lib $ENV{'PERL_LIB_YIW'};
 use YIW::basic;
 # uncomment the next line if better randomness is important
 # use Math::Random::MT qw/rand srand/;
@@ -208,7 +207,7 @@ printf STDERR "$Pnam:\t\t%s\talignments\n",int_commify(scalar keys %alst) if($VE
 #---	prepare commands -----------------------------------
 open HANX,">$Base.cmd.lst" or die "Can't write \"$Base.cmd.lst\"";
 foreach my $name (keys %alst){
- $CMD = "$Path/run_hhsearchone $name -h=$hnam -d=$dcor $fasta $xcons -sali=$sali -athr=$athr -gcon=$gcon -e=$eval -p=$minprob -n=$verymany -a=$showmany $optglob $optbtab $optpsio $optpath -VERB=0 > $Basd/$name";
+ $CMD = "$Path/run_hhsearchone $name -h=\"$hnam\" -d=$dcor $fasta $xcons -sali=$sali -athr=$athr -gcon=$gcon -e=$eval -p=$minprob -n=$verymany -a=$showmany $optglob $optbtab $optpsio $optpath -VERB=0 > $Basd/$name";
  printf HANX "%s\n",$CMD;
 }
 close HANX;

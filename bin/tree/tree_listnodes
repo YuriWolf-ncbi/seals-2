@@ -8,15 +8,14 @@
 ############################################################
 #	System etc
 ############################################################
-#use lib "/home/wolf/perl5/lib/perl5";
-use lib $ENV{'PERL_LIB_PATH'};
+use lib $ENV{'PERL_LIB_YIW'};
 use YIW::basic;
 use YIW::tree;
 # uncomment the next line if better randomness is important
 # use Math::Random::MT qw/rand srand/;
 
-our $Pver = "0.7";
-our $Pdat = "February 27 2020";
+our $Pver = "0.9";
+our $Pdat = "August 30 2024";
 
 our ($Pnam) = ($0 =~ m/([^\/]+)$/);
 our ($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
@@ -72,6 +71,10 @@ Options:
 			2  - print subtree TBL
 			4  - print node weight
 			8  - print branch length
+			16 - print Horton-Strahler orders
+			32 - print max/min balance
+			64 - print no of descendants
+			128 - print no of leaves
 			-1 - print comma-delimited list of leaves
 
 	-l=m		label mode m
@@ -155,12 +158,20 @@ printf STDERR "$Pnam:\t\t%s\tleaves\n",int_commify(scalar @llea) if($VERBOSE);
 label_tree($root,$flagl);
 
 #---	weight ---------------------------------------------
-{
+if($flago>0 and $flago & 0x06){
 $wadd = 1/(scalar @llea) if($wadd<0);
 my $wtot = scalar @llea;				# no of leaves
 $wtot = -$flagw if($flagw<0);				# or user-defined number
 tree_weight($root,$wtot,$wadd);
+}elsif($flago>0 and $flago & 0x01){
+ tree_height($root);
 }
+
+#---	Horton ---------------------------------------------
+tree_hortonorder($root) if($flago>0 and $flago & 0x10);
+
+#---	counts ---------------------------------------------
+tree_leaf_balance($root) if($flago>0 and $flago & 0xa0);
 
 #---	scale ----------------------------------------------
 if($flagw>0){
@@ -205,6 +216,11 @@ for(my $i=0;$i<@lnod;$i++){				# list of internal nodes
  printf "\t%.4e",$$rnod{"tbl"} if($flago & 0x02);
  printf "\t%.4e",$$rnod{"wt"} if($flago & 0x04);
  printf "\t%.4e",$$rnod{"l"} if($flago & 0x08);
+ printf "\t%d",$$rnod{"hord"} if($flago & 0x10);
+ printf "\t%.4e\t%d\t%d\t%d",$$rnod{"bala"},$$rnod{"nlea"},$$rnod{"nmax"},$$rnod{"nmin"} if($flago & 0x20);
+ my $rdes = $$rnod{"d"};
+ printf "\t%d",scalar(@$rdes) if($flago & 0x40);
+ printf "\t%d",$$rnod{"nlea"} if($flago & 0x80);
  print "\n";
 }
 }
@@ -215,13 +231,74 @@ for(my $i=0;$i<@llea;$i++){				# list of leaves
  printf "\t%.4e",$$rnod{"tbl"} if($flago & 0x02);
  printf "\t%.4e",$$rnod{"wt"} if($flago & 0x04);
  printf "\t%.4e",$$rnod{"l"} if($flago & 0x08);
+ printf "\t%d",$$rnod{"hord"} if($flago & 0x10);
+ printf "\t%.4e\t%d\t%d\t%d",$$rnod{"bala"},$$rnod{"nlea"},$$rnod{"nmax"},$$rnod{"nmin"} if($flago & 0x20);
+ my $rdes = $$rnod{"d"};
+ printf "\t%d",scalar(@$rdes) if($flago & 0x40);
+ printf "\t%d",$$rnod{"nlea"} if($flago & 0x80);
  print "\n";
 }
 
 ############################################################
-#	template_function($xxxx)
+#	tree_leaf_balance($rnod)
 ############################################################
-#sub template_function
-#{
-# my $xxxx = shift;
-#}
+sub tree_leaf_balance
+{
+ my $rnod = shift;
+
+ my $rdes = $$rnod{"d"};
+ 
+ if(@$rdes==0){						# terminal node
+  $$rnod{"bala"} = 1;
+  $$rnod{"nlea"} = 1;
+  $$rnod{"nmax"} = 0;
+  $$rnod{"nmin"} = 0;
+  return 1;
+ }
+
+ my $nmax = 0;
+ my $nmin = 0x7fffffff;
+ my $nsum = 0;
+
+ for(my $i=0;$i<@$rdes;$i++){				# go through descendants
+  my $nlea = tree_leaf_balance($$rdes[$i]);
+  $nsum += $nlea;
+  $nmax = $nlea if($nlea>$nmax);
+  $nmin = $nlea if($nlea<$nmin);
+ }
+ $$rnod{"bala"} = $nmax/$nmin;
+ $$rnod{"nlea"} = $nsum;
+ $$rnod{"nmax"} = $nmax;
+ $$rnod{"nmin"} = $nmin;
+
+ return $nsum;
+}
+
+############################################################
+#	print_tree($rnod,$level)
+############################################################
+# not used - debugging procedure
+sub print_tree
+{
+ my $rnod = shift;
+ my $level = shift;
+ 
+ my $blen = $$rnod{"l"};
+ my $name = $$rnod{"n"};
+ my $rdes = $$rnod{"d"};
+ if($name ne ""){
+  for(my $i=0;$i<$level;$i++){ print "\t";} print "$name\n";
+ }else{
+  for(my $i=0;$i<$level;$i++){ print "\t";} print "INTERNAL\n";
+ }
+ for(my $i=0;$i<$level;$i++){ print "\t";} printf "L= %.4f\n",$blen;
+
+ for(my $i=0;$i<$level;$i++){ print "\t";} printf "TBL= %.4f\n",$$rnod{"tbl"};
+ for(my $i=0;$i<$level;$i++){ print "\t";} printf "H= %.4f\n",$$rnod{"high"};
+ 
+ 	#for(my $i=0;$i<$level;$i++){ print "\t";} printf "SL= %s\n",$rrsl;
+ 	#for(my $i=0;$i<$level;$i++){ print "\t";} printf "SR= %s\n",$rrsr;
+ 
+ for(my $i=0;$i<@$rdes;$i++){ print_tree($$rdes[$i],$level+1);}
+}
+

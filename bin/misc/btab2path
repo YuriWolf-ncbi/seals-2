@@ -8,7 +8,7 @@
 ############################################################
 #	System etc
 ############################################################
-use lib "/home/wolf/perl5/lib/perl5";
+use lib $ENV{'PERL_LIB_YIW'};
 use YIW::basic;
 use YIW::blast;
 # uncomment the next line if better randomness is important

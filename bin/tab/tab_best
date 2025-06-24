@@ -8,8 +8,7 @@
 ############################################################
 #	System etc
 ############################################################
-#use lib "/home/wolf/perl5/lib/perl5";
-use lib $ENV{'PERL_LIB_PATH'};
+use lib $ENV{'PERL_LIB_YIW'};
 use YIW::basic;
 
 our $Pver = "0.1";
@@ -21,6 +20,7 @@ our ($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
 our $Ppid = $$;	# Process ID
 our $Base = "tmp.$Pnam.$Ppid";
 our $CMD = "";
+our $VERBOSE = 1;
 ############################################################
 #	Definitions
 ############################################################
@@ -70,6 +70,7 @@ EOINPUT
 YIW::basic::my_args(\@ARGV,1);					# pass 0 to block STDIN
 !@myGlobList and print $Instructions and exit 0;
 
+$VERBOSE = int $myOptList{"VERB"} if(exists $myOptList{"VERB"});	# hidden common option
 # examples for using options:
 # $opts = 1 if(exists $myOptList{"q"});				# on/off
 # $opti = int $myOptList{"i"} if(int $myOptList{"i"}>0);	# positive integer
@@ -98,7 +99,7 @@ $k2 = $k1 if($smod==0);						# value = key
 
 #---	read the data --------------------------------------
 foreach my $fnam (@myGlobList){
- print STDERR "$Pnam:\tReading $fnam\n";
+ print STDERR "$Pnam:\tReading $fnam\n" if($VERBOSE);
  open HAND,"<$fnam" or die "Can't read \"$fnam\"";
  while(<HAND>){
   chomp;
@@ -118,7 +119,7 @@ foreach my $fnam (@myGlobList){
  }
  close HAND;
 }
-printf STDERR "$Pnam:\t\t%s\tbest lines\n",int_commify(scalar keys %key2l);
+printf STDERR "$Pnam:\t\t%s\tbest lines\n",int_commify(scalar keys %key2l) if($VERBOSE);
 
 #---	output ---------------------------------------------
 foreach my $xkey (keys %key2l){

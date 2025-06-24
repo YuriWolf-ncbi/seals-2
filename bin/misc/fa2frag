@@ -8,8 +8,8 @@
 ############################################################
 #	System etc
 ############################################################
-$Pver = "0.7";
-$Pdat = "April 26 2020";
+$Pver = "0.8";
+$Pdat = "2024-10-09";
 
 ($Pnam) = ($0 =~ m/([^\/]+)$/);
 ($Path) = ($0 =~ m/^(.+)\/[^\/]+$/);$Path = "." unless($Path);
@@ -24,6 +24,7 @@ $cpad = "";
 $exth = 0;
 $extt = 0;
 $modei = 0;
+$modew = 0;
 
 $moden = 0;
 %comp = ("A"=>"T","C"=>"G","G"=>"C","T"=>"A","U"=>"A",
@@ -58,6 +59,8 @@ Options:
 	-nt		use nucleotide complementarity rules for inversion
 
 	-pad=X		pad out-of-range fragments with symbol X
+
+	-wrap		wrap segment ends around start
 
 	-h=n		extend the head of each segment by n positions
 
@@ -109,6 +112,7 @@ $rangel = $myOptList{"r"} if(exists $myOptList{"r"});
 $idwrd = $myOptList{"w"} if(exists $myOptList{"w"});
 $moden = 1 if(exists $myOptList{"nt"});
 $cpad = $myOptList{"pad"} if(exists $myOptList{"pad"});
+$modew = 1 if(exists $myOptList{"wrap"});
 $exth = $myOptList{"h"} if($myOptList{"h"}>0);
 $extt = $myOptList{"t"} if($myOptList{"t"}>0);
 $modei = 1 if(exists $myOptList{"id"});
@@ -150,6 +154,7 @@ foreach my $name (@myGlobList){
   $def =~ s/^>*//;
   my $seq = join "",@rest;
   $seq =~ tr/ \t//d;
+  $seq .= $seq if($modew);
   my ($id) = split/ +/,$def;
   $id = (split/$delim/,$id)[$idwrd-1] if($idwrd>0);
   my $lseq = length $seq;
@@ -192,7 +197,7 @@ sub spit_out
    if($pbeg<0){ $padh = -$pbeg; $pbeg = 0;}
    elsif($pbeg>=$lseq){ next;}
    my $padt = 0;
-   if($pend>=$lseq){ $padt = $pend - $lseq + 1; $pend = $lseq - 1;}
+   if($pend>=$lseq and $modew==0){ $padt = $pend - $lseq + 1; $pend = $lseq - 1;}
    elsif($pend<0){ next;}
    next if($pend-$pbeg<=0);
    $outd .= "," if($outd);

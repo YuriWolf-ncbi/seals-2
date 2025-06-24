@@ -33,7 +33,7 @@ $Path/$Pnam $Pver, $Pdat
 
 Use: $Pnam name [options]
 
-FASTA to seqrows.
+Seqrows to FASTA.
 
 Options:
 

@@ -8,8 +8,7 @@
 ############################################################
 #	System etc
 ############################################################
-#use lib "/home/wolf/perl5/lib/perl5";
-use lib $ENV{'PERL_LIB_PATH'};
+use lib $ENV{'PERL_LIB_YIW'};
 use YIW::basic;
 # uncomment the next line if better randomness is important
 # use Math::Random::MT qw/rand srand/;
@@ -92,7 +91,7 @@ Use \"-lin\" with \"-s=x\" where x >= 0.75
 
 Requirements:
 
-	MMSEQ2, plenty of disk space
+	MMSEQ2, Wolf\'s scripts, plenty of disk space
 EOINPUT
 
 ############################################################
